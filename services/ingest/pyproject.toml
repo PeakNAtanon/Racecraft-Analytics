@@ -7,7 +7,7 @@ dependencies = [
   "pandas>=2.2,<3", "pyarrow>=19,<24", "psycopg[binary]>=3.2,<4"
 ]
 [project.optional-dependencies]
-test = ["pytest>=8,<10"]
+test = ["pytest>=9.1.1,<10"]
 [project.scripts]
 racecraft-ingest = "racecraft_ingest.main:main"
 [build-system]
