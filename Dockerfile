@@ -20,9 +20,12 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --chown=nextjs:nodejs --from=builder /app/public ./public
+COPY --chown=nextjs:nodejs --from=builder /app/.next/standalone ./
+COPY --chown=nextjs:nodejs --from=builder /app/.next/static ./.next/static
+# Next.js may write its prerender/data cache at runtime. The container runs as
+# nextjs, so make the cache path writable without running the whole app as root.
+RUN mkdir -p /app/.next/cache && chown -R nextjs:nodejs /app/.next
 USER nextjs
 EXPOSE 3000
 CMD ["node", "server.js"]
