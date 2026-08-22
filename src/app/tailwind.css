@@ -1,0 +1,41 @@
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css";
+
+@source "../";
+
+@theme inline {
+  --color-race-bg: var(--bg);
+  --color-race-surface: var(--surface);
+  --color-race-elevated: var(--elevated);
+  --color-race-line: var(--line);
+  --color-race-text: var(--text);
+  --color-race-muted: var(--muted);
+  --color-race-red: var(--red);
+  --color-race-cyan: var(--cyan);
+  --color-race-amber: var(--amber);
+  --color-race-green: var(--green);
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--elevated);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--red);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--elevated);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--elevated);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--red);
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--cyan);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-display: "Barlow Condensed", Impact, sans-serif;
+  --font-data: "JetBrains Mono", monospace;
+}

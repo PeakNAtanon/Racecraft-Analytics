@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Racecraft Analytics — F1 Data Editorial</title>
+  <desc id="desc">Deep F1 race analysis with race pace, tyre strategy, telemetry context and provider status.</desc>
+  <defs>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#39C6F4" stroke-opacity=".08"/>
+    </pattern>
+    <linearGradient id="redLine" x1="0" x2="1">
+      <stop offset="0" stop-color="#FF3B30"/>
+      <stop offset="1" stop-color="#FF7168"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#0A0C0F"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <path d="M72 108H1120" stroke="#FF3B30" stroke-opacity=".45"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <path d="M72 75h42l-8 10H64zM68 91h42l-8 10H60z" fill="url(#redLine)"/>
+    <text x="132" y="93" fill="#F5F7FA" font-size="28" font-weight="800" letter-spacing="4">RACECRAFT</text>
+    <text x="326" y="93" fill="#A6B0BF" font-size="14" font-weight="700" letter-spacing="3">ANALYTICS</text>
+    <text x="72" y="172" fill="#FF3B30" font-size="18" font-weight="700" letter-spacing="5">F1 DATA EDITORIAL</text>
+    <text x="72" y="278" fill="#F5F7FA" font-size="76" font-weight="900" letter-spacing="-3">Race analysis</text>
+    <text x="72" y="362" fill="#F5F7FA" font-size="76" font-weight="900" letter-spacing="-3">with a data trail.</text>
+    <text x="72" y="426" fill="#A6B0BF" font-size="27">Race pace · tyre strategy · telemetry context · provider status</text>
+    <path d="M72 520H1128" stroke="#1A2028" stroke-width="2"/>
+    <text x="72" y="568" fill="#39C6F4" font-size="17" font-weight="700" letter-spacing="3">JOLPICA / OPENF1 / FASTF1 / RSS</text>
+    <text x="1128" y="568" text-anchor="end" fill="#A6B0BF" font-size="15" letter-spacing="2">INDEPENDENT ANALYSIS</text>
+  </g>
+</svg>

@@ -1,0 +1,28 @@
+# Node.js / Next.js
+node_modules/
+.next/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+
+# Environment files — examples are safe to commit.
+.env*
+!.env.example
+!.env.docker.example
+
+# Python worker artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+
+# Generated analysis data
+.fastf1-cache/
+*.parquet
+
+# OS files
+.DS_Store
+Thumbs.db
