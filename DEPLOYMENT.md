@@ -1,6 +1,42 @@
 # Self-hosted deployment
 
+คู่มือนี้ใช้สำหรับ Deploy Racecraft Analytics บน Debian 13 ด้วย Docker Compose โดยเก็บ PostgreSQL ไว้ภายในเครื่อง เปิดเว็บผ่าน Nginx ที่ `127.0.0.1:3333` และให้ Cloudflare Tunnel เป็นตัวเผยแพร่โดเมนสาธารณะ
+
 Racecraft runs on one Debian host with Docker Compose. The stack keeps PostgreSQL private, exposes Nginx only at `127.0.0.1:3333`, and lets the existing Cloudflare Tunnel publish the site.
+
+## 0. Install Docker on Debian 13
+
+ถ้าเครื่องยังไม่มี Docker ให้ติดตั้ง Docker Engine จาก official repository ของ Docker:
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: trixie
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo docker run hello-world
+```
+
+ถ้าต้องการใช้ Docker โดยไม่พิมพ์ `sudo` ให้เพิ่ม user ปัจจุบันเข้า group แล้ว login ใหม่:
+
+```bash
+sudo usermod -aG docker "$USER"
+```
+
+สมาชิก `docker` group มีสิทธิ์ระดับ root บนเครื่อง ควรทำเฉพาะกับ user ที่เชื่อถือได้ และไม่ต้องติดตั้ง Docker Desktop บน Debian server
 
 ## 1. Prepare the server
 
