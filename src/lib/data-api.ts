@@ -5,7 +5,7 @@ import { calculateDriverSummary } from "./driver-analysis";
 import { getTeamColor } from "./team-colors";
 import { canonicalSessionCode } from "./session-code";
 import { getOpenF1PublicationState, type OpenF1PublicationState } from "./openf1-availability";
-import { getFastF1DriverTelemetry, getFastF1SessionArtifact } from "./fastf1-artifacts";
+import { getFastF1ArtifactInventory, getFastF1DriverTelemetry, getFastF1SessionArtifact } from "./fastf1-artifacts";
 import { durationLabel, gapLabel } from "./session-result-format";
 
 type JsonRecord = Record<string, unknown>;
@@ -737,7 +737,10 @@ export async function getDriverAnalysis(options: DriverAnalysisOptions): Promise
     (options.round === undefined || session.round === options.round) &&
     (options.circuit === undefined || session.circuit === options.circuit)
   );
-  const selectedSession = filtered.find((session) => session.sessionKey === options.sessionKey) ?? filtered.filter((session) => session.status === "complete").at(-1) ?? filtered.at(-1);
+  const hasExplicitSessionFilter = options.sessionKey !== undefined || options.round !== undefined || options.circuit !== undefined || options.sessionCode !== undefined;
+  const publishedArtifacts = hasExplicitSessionFilter ? [] : await getFastF1ArtifactInventory(season);
+  const latestPublishedSession = filtered.filter((session) => publishedArtifacts.some((artifact) => artifact.round === session.round && artifact.sessionCode === (session.sessionCode === "SPR" ? "S" : session.sessionCode))).at(-1);
+  const selectedSession = filtered.find((session) => session.sessionKey === options.sessionKey) ?? latestPublishedSession ?? filtered.filter((session) => session.status === "complete").at(-1) ?? filtered.at(-1);
   const selectedDriverNumber = profile.driverNumber;
   const selectedAnalytics = selectedSession
     ? await getSessionAnalytics({ sessionKey: selectedSession.sessionKey, season, round: selectedSession.round || undefined, sessionCode: selectedSession.sessionCode, sessionName: selectedSession.sessionName, driverNumber: selectedDriverNumber, fastF1Only: true })
@@ -826,6 +829,12 @@ export async function getDataHub(timezone = "Asia/Bangkok", locale: Locale = "en
   const overtakeRows = records(overtakes.data);
   const newsRows = Array.isArray(news) ? news : [];
   const currentRaceName = text(nested(results.data, "MRData", "RaceTable", "Races", "0", "raceName"));
+  const fastF1Artifacts = await getFastF1ArtifactInventory(season);
+  const fastF1ArtifactRows = fastF1Artifacts.slice(0, 12).map((artifact) => [
+    `${artifact.season}/${artifact.round}/${artifact.sessionCode}`,
+    `session.json · ${artifact.parquetFiles} Parquet`,
+    artifact.status.toUpperCase(),
+  ]);
 
   return {
     season,
@@ -845,7 +854,7 @@ export async function getDataHub(timezone = "Asia/Bangkok", locale: Locale = "en
       category({ id: "openf1-pit-stops", label: "OpenF1 Pit Stops", description: "pit duration, lane duration และ lap ของ session ล่าสุด", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/pit?session_key={session_key}` : `${openf1}/pit?session_key=${sessionKey}`, ok: openf1PitStops.ok, statusOverride: openF1Status(openf1PitStops.ok), count: openf1PitStopRows.length, columns: ["DRIVER", "LAP", "PIT DURATION", "LANE DURATION"], rows: openf1PitStopRows.slice(0, 10).map(p => [text(p.driver_number), text(p.lap_number), text(p.pit_duration), text(p.lane_duration)]) }),
       category({ id: "race-control", label: "Race Control", description: "flag, message, sector และสถานะ track จาก session ล่าสุด", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/race_control?session_key={session_key}` : `${openf1}/race_control?session_key=${sessionKey}`, ok: raceControl.ok, statusOverride: openF1Status(raceControl.ok), count: raceControlRows.length, columns: ["TIME", "CATEGORY", "FLAG", "LAP", "MESSAGE"], rows: raceControlRows.slice(0, 10).map(e => [formatDate(e.date), text(e.category), text(e.flag), text(e.lap_number), text(e.message)]) }),
       category({ id: "overtakes", label: "Overtakes", description: "การแซง, driver pair และตำแหน่งหลังการแซง", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/overtakes?session_key={session_key}` : `${openf1}/overtakes?session_key=${sessionKey}`, ok: overtakes.ok, statusOverride: openF1Status(overtakes.ok), count: overtakeRows.length, columns: ["TIME", "OVERTAKER", "OVERTAKEN", "POSITION"], rows: overtakeRows.slice(0, 10).map(o => [formatDate(o.date), text(o.overtaking_driver_number), text(o.overtaken_driver_number), text(o.position)]) }),
-      category({ id: "telemetry", label: "Telemetry Artifacts", description: "ไฟล์ telemetry ที่ FastF1 worker คำนวณและเก็บใน local volume หรือ object storage; ไม่เรียก FastF1 จาก browser", provider: "FastF1 worker", endpoint: process.env.TELEMETRY_STORAGE_PATH ?? "Telemetry artifact storage", ok: false, worker: true, count: 0, columns: ["ARTIFACT", "FORMAT", "STATUS"], rows: [] }),
+      category({ id: "telemetry", label: "Telemetry Artifacts", description: "ไฟล์ telemetry ที่ FastF1 worker คำนวณและเก็บใน local volume หรือ object storage; ไม่เรียก FastF1 จาก browser", provider: "FastF1 worker", endpoint: process.env.TELEMETRY_STORAGE_PATH ?? "Telemetry artifact storage", ok: fastF1Artifacts.some((artifact) => artifact.status === "complete"), ...(fastF1Artifacts.length ? { statusOverride: "live" as const } : { worker: true }), count: fastF1Artifacts.length, columns: ["ARTIFACT", "FORMAT", "STATUS"], rows: fastF1ArtifactRows }),
       category({ id: "rss", label: "News RSS", description: "title, description สั้น, timestamp และลิงก์กลับ publisher ต้นทาง", provider: "RSS publishers", endpoint: process.env.RSS_FEEDS ?? "https://www.motorsport.com/rss/f1/news/,https://www.autosport.com/rss/f1/news/", ok: newsRows.length > 0, count: newsRows.length, columns: ["SOURCE", "TITLE", "PUBLISHED", "LINK"], rows: newsRows.slice(0, 10).map(item => [item.source, item.title, formatDate(item.publishedAt), item.url]) }),
     ],
   };

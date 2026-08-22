@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { DriverRacecraftSnapshot, DriverTelemetrySnapshot, FastF1DriverMetrics, Metric, PaceChartData, SessionAnalyticsSnapshot, StintSnapshot } from "@/lib/types";
 
@@ -17,6 +17,72 @@ type Artifact = {
 
 function artifactRoot() {
   return process.env.TELEMETRY_STORAGE_PATH ?? process.env.FASTF1_ARTIFACTS_DIR;
+}
+
+export interface FastF1ArtifactInventoryItem {
+  season: number;
+  round: number;
+  sessionCode: string;
+  status: string;
+  path: string;
+  parquetFiles: number;
+}
+
+async function directoryNames(directory: string) {
+  try {
+    return (await readdir(directory, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+async function parquetFileCount(directory: string) {
+  try {
+    return (await readdir(path.join(directory, "telemetry"))).filter((entry) => entry.endsWith(".parquet")).length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Lists artifacts already published by the FastF1 worker.
+ * This is deliberately filesystem-only: the web container reads the shared
+ * volume and never calls FastF1 or the worker directly.
+ */
+export async function getFastF1ArtifactInventory(season?: number): Promise<FastF1ArtifactInventoryItem[]> {
+  const root = artifactRoot();
+  if (!root) return [];
+  const seasons = season === undefined ? await directoryNames(root) : [String(season)];
+  const inventory: FastF1ArtifactInventoryItem[] = [];
+  for (const seasonName of seasons) {
+    const seasonNumber = Number(seasonName);
+    if (!Number.isInteger(seasonNumber)) continue;
+    for (const roundName of await directoryNames(path.join(root, seasonName))) {
+      const round = Number(roundName);
+      if (!Number.isInteger(round)) continue;
+      for (const sessionCode of await directoryNames(path.join(root, seasonName, roundName))) {
+        const sessionDirectory = path.join(root, seasonName, roundName, sessionCode);
+        const sessionPath = path.join(sessionDirectory, "session.json");
+        try {
+          const parsed = JSON.parse(await readFile(sessionPath, "utf8")) as Partial<Artifact>;
+          if (parsed.provider !== "FastF1") continue;
+          inventory.push({
+            season: seasonNumber,
+            round,
+            sessionCode: sessionCode.toUpperCase(),
+            status: parsed.status ?? "unknown",
+            path: sessionPath,
+            parquetFiles: await parquetFileCount(sessionDirectory),
+          });
+        } catch {
+          // A partially written artifact is not exposed in diagnostics.
+        }
+      }
+    }
+  }
+  return inventory.sort((a, b) => a.season - b.season || a.round - b.round || a.sessionCode.localeCompare(b.sessionCode));
 }
 
 async function readArtifact(season: number, round: number | undefined, sessionCode: string | undefined): Promise<Artifact | null> {

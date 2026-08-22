@@ -161,10 +161,11 @@ async function collectCompletenessSnapshot(): Promise<CompletenessSnapshot> {
   const season = Number(process.env.F1_SEASON ?? "2026");
   const dataHub = await getDataHub("UTC", "en");
   const checks = dataHub.categories.map(buildDiagnosticCheck);
+  const telemetryArtifacts = dataHub.categories.find((category) => category.id === "telemetry")?.count ?? 0;
   const runtimeChecks = [
     runtimeCheck("database", "Application database", "PostgreSQL", Boolean(process.env.DATABASE_URL), "PostgreSQL"),
     runtimeCheck("storage", "Telemetry storage", "Local volume / object storage", Boolean(process.env.TELEMETRY_STORAGE_PATH), process.env.TELEMETRY_STORAGE_PATH ?? "Telemetry artifact storage"),
-    runtimeCheck("fastf1-worker", "FastF1 worker", "FastF1 worker", Boolean(process.env.FASTF1_CACHE), process.env.TELEMETRY_STORAGE_PATH ?? "Telemetry artifact storage", true),
+    runtimeCheck("fastf1-worker", "FastF1 worker", "FastF1 worker", Boolean(process.env.FASTF1_CACHE), process.env.TELEMETRY_STORAGE_PATH ?? "Telemetry artifact storage", telemetryArtifacts === 0),
   ];
   const allChecks = [...checks, ...runtimeChecks];
   const statusCounts = (status: DiagnosticStatus) => allChecks.filter((check) => check.status === status).length;
