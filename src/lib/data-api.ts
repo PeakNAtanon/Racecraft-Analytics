@@ -6,6 +6,7 @@ import { getTeamColor } from "./team-colors";
 import { canonicalSessionCode } from "./session-code";
 import { getOpenF1PublicationState, type OpenF1PublicationState } from "./openf1-availability";
 import { getFastF1DriverTelemetry, getFastF1SessionArtifact } from "./fastf1-artifacts";
+import { durationLabel, gapLabel } from "./session-result-format";
 
 type JsonRecord = Record<string, unknown>;
 type ApiState = "live" | "unavailable" | "awaiting_data" | "worker";
@@ -292,25 +293,6 @@ function lapTime(value: number | undefined) {
   const minutes = Math.floor(value / 60);
   const seconds = (value - minutes * 60).toFixed(3).padStart(6, "0");
   return `${minutes}:${seconds}`;
-}
-
-function durationLabel(value: unknown): string {
-  if (Array.isArray(value)) return value.map(item => durationLabel(item)).join(" / ");
-  const number = finiteNumber(value);
-  if (number === undefined) return text(value);
-  if (number >= 3600) {
-    const hours = Math.floor(number / 3600);
-    const minutes = Math.floor(number % 3600 / 60);
-    return `${hours}:${String(minutes).padStart(2, "0")}:${(number % 60).toFixed(3).padStart(6, "0")}`;
-  }
-  return lapTime(number);
-}
-
-function gapLabel(value: unknown): string {
-  if (Array.isArray(value)) return value.map(item => gapLabel(item)).join(" / ");
-  const number = finiteNumber(value);
-  if (number === undefined) return text(value);
-  return number === 0 ? "LEADER" : `+${number.toFixed(3)} s`;
 }
 
 function isTrue(value: unknown) {
