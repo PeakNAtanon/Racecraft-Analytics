@@ -9,6 +9,9 @@ from typing import Any
 from .analytics import degradation_slope, theoretical_best
 
 
+FASTF1_ARTIFACT_SCHEMA_VERSION = "fastf1-session-v2"
+
+
 def _records(frame: Any) -> list[dict[str, Any]]:
     if frame is None:
         return []
@@ -163,10 +166,16 @@ class FastF1Adapter:
         stints: list[dict[str, Any]] = []
         racecraft_by_driver: dict[str, dict[str, Any]] = {}
         telemetry_by_driver: dict[str, dict[str, Any]] = {}
-        lap_numbers = sorted({int(item) for rows in drivers.values() for row in rows if (item := _number(row.get("LapNumber"))) is not None})
+        cleaned_by_driver: dict[str, list[tuple[int, float]]] = {}
+        for driver, rows in drivers.items():
+            cleaned_by_driver[driver] = [sample for row in rows if (sample := _clean_lap(row)) is not None]
+        # Do not put a lap on the chart when no driver has a validated value
+        # for it. This removes empty x-axis slots while preserving null gaps
+        # for a driver whose own lap was rejected by FastF1 validation.
+        lap_numbers = sorted({lap for clean in cleaned_by_driver.values() for lap, _ in clean})
 
         for driver, rows in sorted(drivers.items()):
-            clean = [sample for row in rows if (sample := _clean_lap(row)) is not None]
+            clean = cleaned_by_driver[driver]
             times = [value for _, value in clean]
             if not times:
                 continue
@@ -224,7 +233,7 @@ class FastF1Adapter:
 
         artifact = {
             "provider": "FastF1",
-            "schemaVersion": "fastf1-session-v1",
+            "schemaVersion": FASTF1_ARTIFACT_SCHEMA_VERSION,
             "status": "complete",
             "season": season,
             "round": round_number,

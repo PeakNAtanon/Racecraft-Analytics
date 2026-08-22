@@ -2,9 +2,10 @@ from __future__ import annotations
 import argparse, asyncio, json
 from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from .config import Settings
-from .fastf1_adapter import FastF1Adapter
+from .fastf1_adapter import FASTF1_ARTIFACT_SCHEMA_VERSION, FastF1Adapter
 from .providers import JolpicaProvider, OpenF1Provider, canonical_session_code
 from .rss import fetch_feed
 from .repository import Repository
@@ -22,6 +23,14 @@ def _parse_datetime(value: Any) -> datetime | None:
 
 def _fastf1_session_code(code: str) -> str:
     return "S" if code.upper() == "SPR" else code.upper()
+
+
+def _artifact_is_current(path: Path) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(payload, dict) and payload.get("schemaVersion") == FASTF1_ARTIFACT_SCHEMA_VERSION
 
 
 def _session_round(calendar: dict[str, Any] | None, session: dict[str, Any]) -> int | None:
@@ -64,7 +73,7 @@ def _run_fastf1(settings: Settings, calendar: dict[str, Any] | None, sessions: l
     pending = 0
     for _, round_number, code, _ in candidates:
         destination = adapter.artifact_path(settings.telemetry_storage, settings.season, round_number, _fastf1_session_code(code))
-        if destination.exists() and destination.stat().st_size > 0:
+        if destination.exists() and destination.stat().st_size > 0 and _artifact_is_current(destination):
             continue
         pending += 1
         try:

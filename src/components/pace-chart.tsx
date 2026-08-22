@@ -2,6 +2,7 @@
 
 import ReactECharts from "echarts-for-react";
 import { formatChartNumber, formatLapTooltipValue } from "@/lib/chart-format";
+import { buildValueGapBridges } from "@/lib/position-series";
 import type { PaceChartData, PaceSeries } from "@/lib/types";
 
 const theme = {
@@ -42,11 +43,18 @@ function validValues(series: PaceSeries) {
 }
 
 export function PaceChart({ data }: { data: PaceChartData }) {
-  const seriesData = selectSeries(data);
-  if (!seriesData.length || !data.laps.length) {
+  const selectedSeries = selectSeries(data);
+  if (!selectedSeries.length || !data.laps.length) {
     return <div className="empty">ยังไม่มีข้อมูล lap ที่ผ่าน validation สำหรับ session นี้</div>;
   }
 
+  // Keep every series aligned to the lap axis. Older artifacts and provider
+  // fallbacks can contain a shorter values array; padding with null prevents
+  // later values from appearing under the wrong lap.
+  const seriesData = selectedSeries.map(series => ({
+    ...series,
+    values: data.laps.map((_, index) => series.values[index] ?? null),
+  }));
   const colors = seriesData.map((series, index) => series.color ?? fallbackColors[index % fallbackColors.length]);
   const valueGroups = seriesData.map(validValues);
   const allValues = valueGroups.flat();
@@ -58,6 +66,17 @@ export function PaceChart({ data }: { data: PaceChartData }) {
   const fastestSeries = fastestSeriesIndex >= 0 ? seriesData[fastestSeriesIndex] : undefined;
   const fastestLapIndex = fastestSeriesIndex >= 0 && fastest !== null ? seriesData[fastestSeriesIndex].values.findIndex(value => value === fastest) : -1;
   const fastestLapLabel = fastestLapIndex >= 0 ? `LAP ${data.laps[fastestLapIndex]}` : "Validated data";
+  const gapSeries = seriesData.flatMap((series, index) => buildValueGapBridges(series.values).map((values, gapIndex) => ({
+    name: `${series.code} gap ${gapIndex + 1}`,
+    type: "line",
+    data: values,
+    connectNulls: true,
+    showSymbol: false,
+    silent: true,
+    tooltip: { show: false },
+    z: 1,
+    lineStyle: { color: colors[index], type: "dashed", width: 1.5, opacity: 0.62 },
+  })));
   const range = allValues.length ? Math.max(...allValues) - Math.min(...allValues) : 1;
   const padding = Math.max(0.08, range * 0.14);
   const yMin = allValues.length ? Math.min(...allValues) - padding : 0;
@@ -122,7 +141,7 @@ export function PaceChart({ data }: { data: PaceChartData }) {
       splitNumber: 4,
       splitLine: { lineStyle: { color: "#ffffff14", type: "dashed" } },
     },
-    series: seriesData.map((series, index) => ({
+    series: [...gapSeries, ...seriesData.map((series, index) => ({
       name: series.code,
       type: "line",
       data: series.values,
@@ -137,12 +156,12 @@ export function PaceChart({ data }: { data: PaceChartData }) {
       itemStyle: { color: colors[index], borderColor: theme.background, borderWidth: 2 },
       areaStyle: index === 0 ? { color: area(`${colors[index]}20`) } : undefined,
       emphasis: { focus: "series", showSymbol: true, lineStyle: { width: 3.5 } },
-    })),
+    }))],
   };
 
   return (
     <>
-      <div className="chart-context"><span>{data.sessionLabel}</span><span className={missingValues ? "chart-gap-note" : undefined}>{data.source === "FastF1" ? (missingValues ? `GAPS ${missingValues} · MISSING VALIDATED LAPS` : "FASTF1 VALIDATED ARTIFACT") : data.source === "OpenF1" ? (missingValues ? `GAPS ${missingValues} · MISSING SESSION LAPS` : "OPENF1 SESSION CONTEXT") : "AWAITING PROVIDER DATA"}</span></div>
+      <div className="chart-context"><span>{data.sessionLabel}</span><span className={missingValues ? "chart-gap-note" : undefined}>{data.source === "FastF1" ? (missingValues ? `GAPS ${missingValues} · DASHED = GAP BRIDGE · SOLID = VALIDATED LAP` : "FASTF1 VALIDATED ARTIFACT") : data.source === "OpenF1" ? (missingValues ? `GAPS ${missingValues} · DASHED = GAP BRIDGE · SOLID = SESSION LAP` : "OPENF1 SESSION CONTEXT") : "AWAITING PROVIDER DATA"}</span></div>
       <div className="chart-stat-strip" aria-label="Lap pace summary">
         <div className="chart-stat accent"><span>FASTEST LAP</span><strong>{formatLapTooltipValue(fastest)}</strong><small>{fastestSeries?.name ? `${fastestSeries.name} · ${fastestLapLabel}` : fastestLapLabel}</small></div>
         <div className="chart-stat"><span>PACE GAP</span><strong>{paceGap === null ? "—" : `+${paceGap.toFixed(3)} s`}</strong><small>best selected drivers</small></div>
