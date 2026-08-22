@@ -17,7 +17,7 @@ const theme = {
 };
 
 const fallbackColors = [theme.cyan, theme.red, theme.amber, theme.green];
-const lineTypes = ["solid", "dashed", "dotted", "solid"] as const;
+const symbols = ["circle", "diamond", "triangle", "roundRect"] as const;
 
 const area = (top: string) => ({
   type: "linear",
@@ -128,11 +128,12 @@ export function PaceChart({ data }: { data: PaceChartData }) {
       data: series.values,
       smooth: 0.2,
       connectNulls: false,
-      showSymbol: false,
-      symbol: index % 2 === 0 ? "circle" : "diamond",
+      showSymbol: true,
+      showAllSymbol: true,
+      symbol: symbols[index % symbols.length],
       symbolSize: 8,
       z: seriesData.length - index,
-      lineStyle: { color: colors[index], type: lineTypes[index % lineTypes.length], width: 2.5, shadowBlur: 8, shadowColor: `${colors[index]}70` },
+      lineStyle: { color: colors[index], type: "solid", width: 2.5, shadowBlur: 8, shadowColor: `${colors[index]}70` },
       itemStyle: { color: colors[index], borderColor: theme.background, borderWidth: 2 },
       areaStyle: index === 0 ? { color: area(`${colors[index]}20`) } : undefined,
       emphasis: { focus: "series", showSymbol: true, lineStyle: { width: 3.5 } },

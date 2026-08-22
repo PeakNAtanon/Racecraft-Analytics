@@ -1,5 +1,12 @@
 import type { ComparisonSession } from "./types";
 
+export function selectDriverPair(availableCodes: string[], preferredCodes: string[] = [], requestedCodes: string[] = []) {
+  const available = new Set(availableCodes);
+  return Array.from(new Set([...requestedCodes, ...preferredCodes, ...availableCodes]))
+    .filter((code) => available.has(code))
+    .slice(0, 2);
+}
+
 /**
  * Returns the latest completed season-index session that can be mapped to a
  * FastF1 artifact directory. The season comparison loader already excludes

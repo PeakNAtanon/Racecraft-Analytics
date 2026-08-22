@@ -15,7 +15,7 @@ The ingestion worker lives in `services/ingest/racecraft_ingest/`. Provider adap
 
 ## Build, Test, and Development Commands
 
-- `npm install` installs Node dependencies.
+- `npm ci` installs locked dependencies reproducibly.
 - `npm run dev` starts Next.js at `http://localhost:3000`.
 - `npm run typecheck` runs strict TypeScript checks.
 - `npm run lint` runs ESLint.
@@ -34,4 +34,4 @@ Name TypeScript tests `*.test.ts` and Python tests `test_*.py`. Add focused case
 
 ## Commits, Pull Requests & Security
 
-Use concise Conventional Commit messages such as `feat: add stint comparison`. Pull requests should explain UI, provider, or schema effects, link issues, list validation commands, and include responsive screenshots for UI changes. Never commit `.env` files, credentials, FastF1 cache, telemetry, or generated Parquet files. Keep PostgreSQL port `5432` private and review `RISK_ACCEPTANCE.md` before changing commercial data usage.
+History mixes `first commit` with Conventional Commit style. Use concise Conventional Commit messages going forward, such as `feat: add stint comparison`. Pull requests should explain UI, provider, or schema effects, link issues, list validation commands, and include responsive screenshots for UI changes. Never commit `.env` files, credentials, FastF1 cache, telemetry, or generated Parquet files. Keep PostgreSQL port `5432` private and review `RISK_ACCEPTANCE.md` before changing commercial data usage.

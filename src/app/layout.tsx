@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Header, MobileNav } from "@/components/navigation";
 import { GlobalDiagnosticsShortcut } from "@/components/diagnostics-shortcut";
@@ -8,10 +8,19 @@ import { getTimezone, getTimezoneMode } from "@/lib/timezone-server";
 import "flag-icons/css/flag-icons.min.css";
 import "./tailwind.css";
 import "./globals.css";
+import "./motion.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 const siteTitle = "Racecraft Analytics";
 const siteDescription = "Deep F1 race analysis powered by data from Jolpica, OpenF1, FastF1 and RSS sources.";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#08090a",
+  colorScheme: "dark",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

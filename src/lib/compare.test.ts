@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { latestFastF1Session } from "./compare";
+import { latestFastF1Session, selectDriverPair } from "./compare";
 import type { ComparisonSession } from "./types";
 
 function session(overrides: Partial<ComparisonSession>): ComparisonSession {
@@ -30,5 +30,15 @@ describe("Compare FastF1 session selection", () => {
 
   it("returns undefined when no session can map to a FastF1 artifact", () => {
     expect(latestFastF1Session([session({ round: 0 })])).toBeUndefined();
+  });
+});
+
+describe("Compare driver pair selection", () => {
+  it("keeps requested drivers first and fills a two-driver VS pair", () => {
+    expect(selectDriverPair(["ANT", "HAM", "RUS"], ["ANT", "HAM"], ["RUS"])).toEqual(["RUS", "ANT"]);
+  });
+
+  it("excludes unknown and duplicate driver codes", () => {
+    expect(selectDriverPair(["ANT", "HAM"], ["ANT", "HAM"], ["XXX", "ANT", "ANT"])).toEqual(["ANT", "HAM"]);
   });
 });

@@ -5,11 +5,12 @@ import { formatChartNumber, formatPositionTooltipValue } from "@/lib/chart-forma
 import type { Locale } from "@/lib/i18n";
 import { message } from "@/lib/i18n";
 import { getTeamColor } from "@/lib/team-colors";
+import { buildPositionGapBridges } from "@/lib/position-series";
 import type { SeasonComparisonSnapshot } from "@/lib/types";
 
 const theme = { background: "#0a0c0f", surface: "#12161c", text: "#f5f7fa", muted: "#a6b0bf", line: "#29313d" };
 const fallbackColors = ["#39c6f4", "#ff3b30", "#f4b740", "#3ddc97"];
-const lineTypes = ["solid", "dashed", "dotted", "solid"] as const;
+const symbols = ["circle", "diamond", "triangle", "roundRect"] as const;
 
 function labelForSession(circuit: string, code: string) {
   return `${circuit}\n${code}`;
@@ -49,19 +50,37 @@ export function SeasonComparisonChart({ comparison, activeDrivers, locale }: { c
   const selectedStats = selected.map(code => positionStats(sessions, code));
   const bestFinish = selectedStats.reduce<number | null>((best, stats) => stats.best === null ? best : best === null ? stats.best : Math.min(best, stats.best), null);
   const bestAverage = selectedStats.reduce<number | null>((best, stats) => stats.average === null ? best : best === null ? stats.average : Math.min(best, stats.average), null);
-  const series = selected.map((code, index) => ({
+  const seriesData = selected.map((code, index) => ({
+    code,
+    index,
+    values: sessions.map((_, sessionIndex) => findPosition(sessionIndex, code)),
+  }));
+  const resultSeries = seriesData.map(({ code, index, values }) => ({
     name: code,
     type: "line",
-    data: sessions.map((_, sessionIndex) => findPosition(sessionIndex, code)),
+    data: values,
     connectNulls: false,
-    showSymbol: false,
-    symbol: index % 2 === 0 ? "circle" : "diamond",
+    showSymbol: true,
+    showAllSymbol: true,
+    symbol: symbols[index % symbols.length],
     symbolSize: 8,
-    z: selected.length - index,
-    lineStyle: { color: colors[index], type: lineTypes[index % lineTypes.length], width: 2.5, shadowBlur: 8, shadowColor: `${colors[index]}70` },
+    z: selected.length - index + 2,
+    lineStyle: { color: colors[index], type: "solid", width: 2.5, shadowBlur: 8, shadowColor: `${colors[index]}70` },
     itemStyle: { color: colors[index], borderColor: theme.background, borderWidth: 2 },
     emphasis: { focus: "series", showSymbol: true, lineStyle: { width: 3.5 } },
   }));
+  const gapSeries = seriesData.flatMap(({ code, index, values }) => buildPositionGapBridges(values).map((data, gapIndex) => ({
+    name: `${code} gap ${gapIndex + 1}`,
+    type: "line",
+    data,
+    connectNulls: true,
+    silent: true,
+    showSymbol: false,
+    tooltip: { show: false },
+    z: selected.length - index + 1,
+    lineStyle: { color: colors[index], type: "dashed", width: 2, opacity: 0.52 },
+  })));
+  const series = [...gapSeries, ...resultSeries];
   const labelInterval = sessions.length > 8 ? Math.max(0, Math.ceil(sessions.length / 8) - 1) : 0;
   const option = {
     backgroundColor: "transparent",
@@ -124,7 +143,7 @@ export function SeasonComparisonChart({ comparison, activeDrivers, locale }: { c
   };
 
   return <>
-    <div className="chart-context"><span>{message(locale, "comparisonLegendHint")}</span><span>{sessions.length} {message(locale, "comparisonSessions")} · {new Set(sessions.map(session => session.round || session.circuit)).size} {message(locale, "comparisonCircuits")}</span></div>
+    <div className="chart-context"><span>{message(locale, "comparisonLegendHint")} · SOLID = CLASSIFIED · DASHED BRIDGE = NO CLASSIFIED RESULT</span><span>{sessions.length} {message(locale, "comparisonSessions")} · {new Set(sessions.map(session => session.round || session.circuit)).size} {message(locale, "comparisonCircuits")}</span></div>
     <div className="chart-stat-strip" aria-label="Season comparison summary">
       <div className="chart-stat accent"><span>BEST FINISH</span><strong>{formatPosition(bestFinish)}</strong><small>{selected.join(" · ")}</small></div>
       <div className="chart-stat"><span>BEST AVG POSITION</span><strong>{bestAverage === null ? "—" : `P${bestAverage.toFixed(1)}`}</strong><small>selected drivers</small></div>

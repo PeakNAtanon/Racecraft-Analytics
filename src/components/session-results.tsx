@@ -6,8 +6,12 @@ function ResultRow({ result, locale }: { result: SessionResult; locale: Locale }
   const color = getTeamColor(result.team, result.color);
   return <tr className={`session-result-row ${result.status.toLowerCase()}`} style={{ "--team-color": color } as React.CSSProperties}>
     <td className="rank">{result.position === undefined ? "—" : String(result.position).padStart(2, "0")}</td>
-    <td><span className="driver-code"><span className="team-color-swatch" aria-hidden="true" />{result.code}</span><strong className="table-driver-name">{result.name}</strong></td>
-    <td>{result.team}</td>
+    <td>
+      <span className="driver-code"><span className="team-color-swatch" aria-hidden="true" />{result.code}</span>
+      <strong className="table-driver-name">{result.name}</strong>
+      <small className="result-team-mobile">{result.team}</small>
+    </td>
+    <td className="result-team">{result.team}</td>
     <td><span className={`result-status ${result.status.toLowerCase()}`}>{result.status === "CLASSIFIED" ? message(locale, "complete") : result.status}</span></td>
     <td className="mono">{result.position === 1 ? result.time : result.gap}</td>
     <td className="mono">{result.laps ?? "—"}</td>
