@@ -29,7 +29,7 @@ py -m venv .venv
 
 ## Self-hosted Docker on Debian
 
-โปรเจกต์มี production Docker stack สำหรับ self-hosted PostgreSQL, Next.js web, FastF1 worker และ Nginx โดย Nginx bind ที่ `127.0.0.1:3333` เพื่อให้ Cloudflare Tunnel เดิมชี้ไปที่ `http://localhost:3333` ได้
+โปรเจกต์มี production Docker stack สำหรับ self-hosted PostgreSQL, Next.js web, FastF1 worker, Nginx และ Traefik โดย Traefik bind ที่ `127.0.0.1:3333` แล้วส่งต่อเข้า Nginx ภายใน เพื่อให้ Cloudflare Tunnel เดิมชี้ไปที่ `http://localhost:3333` ได้
 
 ```bash
 cp .env.docker.example .env.docker
@@ -42,7 +42,9 @@ docker compose ps
 curl http://127.0.0.1:3333/healthz
 ```
 
-สำหรับ Debian server ที่มี RAM 8GB compose ตั้งเพดานไว้ให้แล้ว: PostgreSQL 768MB, web 512MB, FastF1 worker 2GB และ Nginx 64MB (รวมเพดานประมาณ 3.3GB) พร้อมจำกัด numerical threads ของ worker เหลือ 1 เพื่อลด CPU/RAM spike ระหว่างคำนวณ telemetry FastF1 เว็บใช้ Next.js standalone runtime จึงไม่ติดตั้ง `node_modules` ทั้งชุดใน production image หาก session ใหญ่จน worker ถูก OOM ให้เพิ่มเฉพาะ `worker.mem_limit` เป็น `3g` และตรวจ `free -h` ก่อน ไม่ควรเพิ่มทุก service พร้อมกัน
+สำหรับ Debian server ที่มี RAM 8GB compose ตั้งเพดานไว้ให้แล้ว: PostgreSQL 768MB, web 512MB, FastF1 worker 2GB และ Nginx 96MB (รวมเพดานประมาณ 3.4GB) พร้อมจำกัด numerical threads ของ worker เหลือ 1 เพื่อลด CPU/RAM spike ระหว่างคำนวณ telemetry FastF1 เว็บใช้ Next.js standalone runtime จึงไม่ติดตั้ง `node_modules` ทั้งชุดใน production image หาก session ใหญ่จน worker ถูก OOM ให้เพิ่มเฉพาะ `worker.mem_limit` เป็น `3g` และตรวจ `free -h` ก่อน ไม่ควรเพิ่มทุก service พร้อมกัน
+
+Traefik เป็น edge proxy ภายในเครื่องและปิด dashboard/access log เพื่อลด overhead; Nginx เปิด gzip, keep-alive และ response buffering; cache เฉพาะไฟล์ immutable ใน `/_next/static/` ด้วย cache ชั่วคราว 64MB บน tmpfs ไม่ cache HTML หรือ API เพื่อไม่ให้ข้อมูล race/news เก่า ส่วน Docker log จำกัดไว้ 3 ไฟล์ต่อ service เพื่อป้องกัน disk เต็ม
 
 Migration อยู่ที่ `database/migrations/` และ Docker PostgreSQL จะรันตามลำดับชื่อไฟล์ (`0001_initial.sql`, `0002_telemetry_artifacts.sql`) เฉพาะตอนสร้าง volume ครั้งแรก หากแก้ schema ภายหลังต้องรัน migration เพิ่มเอง ห้ามเปิด port `5432` ออก Internet และควรสำรอง volume `postgres_data` ไปยังเครื่องอื่น
 

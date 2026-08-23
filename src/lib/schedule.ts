@@ -86,7 +86,10 @@ function applyRaceMetadata(round: Round, race: JsonRecord | undefined): Round {
   };
 }
 
-export async function getScheduleRounds(season = Number(process.env.F1_SEASON ?? "2026")): Promise<Round[]> {
+const scheduleCache = new Map<string, { expiresAt: number; value: Round[] }>();
+const scheduleInFlight = new Map<string, Promise<Round[]>>();
+
+async function loadScheduleRounds(season: number): Promise<Round[]> {
   const jolpica = (process.env.JOLPICA_BASE_URL ?? "https://api.jolpi.ca/ergast/f1").replace(/\/$/, "");
   const openf1 = (process.env.OPENF1_BASE_URL ?? "https://api.openf1.org/v1").replace(/\/$/, "");
   const [calendar, sessions] = await Promise.all([
@@ -150,6 +153,22 @@ export async function getScheduleRounds(season = Number(process.env.F1_SEASON ??
     const raceSession = apiSessions.find(session => session.code === "R");
     return { ...round, raceStartsAt: raceSession?.startsAt ?? round.raceStartsAt, sessions: apiSessions };
   });
+}
+
+export async function getScheduleRounds(season = Number(process.env.F1_SEASON ?? "2026")): Promise<Round[]> {
+  const cacheKey = String(season);
+  const cached = scheduleCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const active = scheduleInFlight.get(cacheKey);
+  if (active) return active;
+  const request = loadScheduleRounds(season).then(value => {
+    scheduleCache.set(cacheKey, { expiresAt: Date.now() + 600_000, value });
+    return value;
+  }).finally(() => {
+    if (scheduleInFlight.get(cacheKey) === request) scheduleInFlight.delete(cacheKey);
+  });
+  scheduleInFlight.set(cacheKey, request);
+  return request;
 }
 
 export async function getScheduleRound(value: string): Promise<Round | undefined> {

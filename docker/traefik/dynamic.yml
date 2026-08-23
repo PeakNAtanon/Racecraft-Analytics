@@ -1,0 +1,14 @@
+http:
+  routers:
+    racecraft:
+      entryPoints:
+        - web
+      rule: PathPrefix(`/`)
+      service: racecraft-nginx
+
+  services:
+    racecraft-nginx:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://nginx:80

@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import type { DriverRacecraftSnapshot, DriverTelemetrySnapshot, FastF1DriverMetrics, Metric, PaceChartData, SessionAnalyticsSnapshot, StintSnapshot } from "@/lib/types";
+import type { DriverRacecraftSnapshot, DriverTelemetrySnapshot, FastF1DriverAvailability, FastF1DriverMetrics, Metric, PaceChartData, SessionAnalyticsSnapshot, StintSnapshot } from "@/lib/types";
 
 type ArtifactMetric = { driver?: string; validLaps?: number; cleanLapMedian?: number; bestLap?: number; consistency?: number | null; degradationSlope?: number | null; theoreticalBest?: number | null };
 type ArtifactWeather = { sampleCount?: number; latest?: { timestamp?: string; airTemperature?: number; trackTemperature?: number; humidity?: number; windSpeed?: number; windDirection?: number; rainfall?: boolean } };
@@ -10,6 +10,7 @@ type Artifact = {
   sessionName?: string;
   sessionCode?: string;
   metrics?: ArtifactMetric[];
+  driverAvailability?: Record<string, FastF1DriverAvailability>;
   pace?: { laps?: number[]; series?: Array<{ code?: string; name?: string; values?: Array<number | null> }> };
   stints?: Array<{ driver?: string; stint?: number; compound?: string; startLap?: number; endLap?: number; lapCount?: number }>;
   racecraftByDriver?: Record<string, { positionsGained?: number; gridPosition?: number; finishPosition?: number }>;
@@ -146,6 +147,7 @@ function toSnapshot(artifact: Artifact, sessionKey: number | undefined, results:
       ...(number(item.theoreticalBest) === undefined ? {} : { theoreticalBest: number(item.theoreticalBest) }),
     } satisfies FastF1DriverMetrics]];
   }));
+  const driverAvailability: Record<string, FastF1DriverAvailability> = Object.fromEntries(Object.entries(artifact.driverAvailability ?? {}).map(([code, item]) => [code.toUpperCase(), item]));
   const racecraftByDriver: Record<string, DriverRacecraftSnapshot> = Object.fromEntries(Object.entries(artifact.racecraftByDriver ?? {}).map(([code, item]) => [code.toUpperCase(), {
     source: "FastF1",
     ...(number(item.positionsGained) === undefined ? {} : { positionsGained: number(item.positionsGained) }),
@@ -184,7 +186,7 @@ function toSnapshot(artifact: Artifact, sessionKey: number | undefined, results:
   const telemetryByDriver: Record<string, DriverTelemetrySnapshot> = Object.fromEntries(Object.entries(artifact.telemetryByDriver ?? {}).map(([code, item]) => [code.toUpperCase(), { available: item.available === true && (item.fields?.length ?? 0) > 0, sampleCount: item.sampleCount ?? item.samples?.length ?? 0, fields: item.fields ?? [], samples: item.samples ?? [], source: "FastF1" }]));
   const resolvedSessionName = artifact.sessionName ?? artifact.sessionCode ?? "FastF1 session";
   const weather = artifactWeatherSnapshot(artifact, resolvedSessionName);
-  return { sessionKey, sessionName: resolvedSessionName, source: "FastF1", metrics: fastMetrics, driverMetrics, racecraftByDriver, telemetryByDriver, pace, stints, results, resultsSource, ...(weather ? { weather } : {}) };
+  return { sessionKey, sessionName: resolvedSessionName, source: "FastF1", metrics: fastMetrics, driverMetrics, driverAvailability, racecraftByDriver, telemetryByDriver, pace, stints, results, resultsSource, ...(weather ? { weather } : {}) };
 }
 
 export async function getFastF1SessionArtifact(options: { season: number; round?: number; sessionCode?: string; sessionKey?: number; results?: SessionAnalyticsSnapshot["results"]; resultsSource?: SessionAnalyticsSnapshot["resultsSource"] }): Promise<SessionAnalyticsSnapshot | null> {

@@ -23,7 +23,7 @@ def test_export_session_artifact_contains_fastf1_metrics(tmp_path):
     artifact = FastF1Adapter(str(tmp_path / "cache")).export_session_artifact(session, str(destination), 2026, 1, "R")
 
     assert artifact["provider"] == "FastF1"
-    assert artifact["schemaVersion"] == "fastf1-session-v3"
+    assert artifact["schemaVersion"] == "fastf1-session-v4"
     assert artifact["metrics"][0]["validLaps"] == 2
     assert artifact["dataQuality"]["validLaps"] == 2
     assert artifact["weather"]["latest"]["trackTemperature"] == 31.0
@@ -45,3 +45,26 @@ def test_export_session_artifact_omits_laps_without_any_validated_value(tmp_path
     assert artifact["pace"]["laps"] == [1, 3]
     ver_series = next(series for series in artifact["pace"]["series"] if series["code"] == "VER")
     assert ver_series["values"] == [80.0, None]
+
+
+def test_export_session_artifact_reports_driver_data_gaps(tmp_path):
+    rows = [
+        {"Driver": "VER", "LapNumber": 1, "LapTime": 80.0, "TrackStatus": "1", "IsAccurate": True},
+        {"Driver": "HAM", "LapNumber": 2, "LapTime": 81.0, "TrackStatus": "4", "IsAccurate": True},
+    ]
+    results = [
+        {"Driver": "VER", "Position": 1},
+        {"Driver": "HAM", "Position": 2},
+        {"Driver": "RUS", "Position": 3},
+    ]
+    session = type("FakeSession", (), {"laps": FakeFrame(rows), "results": FakeFrame(results), "name": "Race"})()
+    destination = tmp_path / "2026" / "1" / "R" / "session.json"
+
+    artifact = FastF1Adapter(str(tmp_path / "cache")).export_session_artifact(session, str(destination), 2026, 1, "R")
+
+    availability = artifact["driverAvailability"]
+    assert set(availability) == {"VER", "HAM", "RUS"}
+    assert availability["VER"]["status"] == "no_telemetry"
+    assert availability["HAM"]["status"] == "no_valid_laps"
+    assert availability["RUS"]["status"] == "no_laps"
+    assert artifact["dataQuality"]["driversSeen"] == 3

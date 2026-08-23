@@ -189,14 +189,56 @@ export function deduplicateNews(items:NewsItem[]){
   for(const item of ordered){const duplicateIndex=unique.findIndex(existing=>sameNewsStory(existing,item));if(duplicateIndex===-1)unique.push(item);else if(newsPriority(item.provider)<newsPriority(unique[duplicateIndex].provider))unique[duplicateIndex]=item;}
   return unique.sort((a,b)=>Date.parse(b.publishedAt)-Date.parse(a.publishedAt)).slice(0,12);
 }
-export async function getNews():Promise<NewsItem[]> {
-  const defaultFeeds=["https://www.autosport.com/rss/f1/news/","https://www.motorsport.com/rss/f1/news/"];
-  const feeds=[...new Set([...(process.env.RSS_FEEDS??"").split(","),...defaultFeeds].map(v=>v.trim()).filter(Boolean))];
-  const settled=await Promise.allSettled(feeds.map(async feed=>{
-    const response=await fetch(feed,{headers:{"User-Agent":process.env.PROVIDER_USER_AGENT??"RacecraftAnalytics/0.1"},next:{revalidate:600},signal:AbortSignal.timeout(5000)});
-    if(!response.ok) throw new Error(`RSS ${response.status}`);
-    const xml=await response.text(); const source=decodeXml(tag(xml,"title"))||new URL(feed).hostname;
-    const provider=newsProvider(feed);return [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0,8).map((match,index)=>{const block=match[1];const url=decodeXml(tag(block,"link"));const image=rssImage(block);return {id:decodeXml(tag(block,"guid"))||`${feed}-${index}`,source,provider,title:decodeXml(tag(block,"title")),description:decodeXml(tag(block,"description")).slice(0,260),url,publishedAt:new Date(decodeXml(tag(block,"pubDate"))||Date.now()).toISOString(),...(image?{imageUrl:image}:{})}}).filter(item=>item.title&&item.url);
+const newsCache = new Map<string, { expiresAt: number; value: NewsItem[] }>();
+const newsInFlight = new Map<string, Promise<NewsItem[]>>();
+
+async function loadNews(feeds: string[]) {
+  const settled = await Promise.allSettled(feeds.map(async feed => {
+    const response = await fetch(feed, {
+      headers: { "User-Agent": process.env.PROVIDER_USER_AGENT ?? "RacecraftAnalytics/0.1" },
+      next: { revalidate: 600 },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error(`RSS ${response.status}`);
+    const xml = await response.text();
+    const source = decodeXml(tag(xml, "title")) || new URL(feed).hostname;
+    const provider = newsProvider(feed);
+    return [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)]
+      .slice(0, 8)
+      .map((match, index) => {
+        const block = match[1];
+        const url = decodeXml(tag(block, "link"));
+        const image = rssImage(block);
+        return {
+          id: decodeXml(tag(block, "guid")) || `${feed}-${index}`,
+          source,
+          provider,
+          title: decodeXml(tag(block, "title")),
+          description: decodeXml(tag(block, "description")).slice(0, 260),
+          url,
+          publishedAt: new Date(decodeXml(tag(block, "pubDate")) || Date.now()).toISOString(),
+          ...(image ? { imageUrl: image } : {}),
+        };
+      })
+      .filter(item => item.title && item.url);
   }));
-  return deduplicateNews(settled.flatMap(result=>result.status==="fulfilled"?result.value:[]));
+  return deduplicateNews(settled.flatMap(result => result.status === "fulfilled" ? result.value : []));
+}
+
+export async function getNews(): Promise<NewsItem[]> {
+  const defaultFeeds = ["https://www.autosport.com/rss/f1/news/", "https://www.motorsport.com/rss/f1/news/"];
+  const feeds = [...new Set([...(process.env.RSS_FEEDS ?? "").split(","), ...defaultFeeds].map(value => value.trim()).filter(Boolean))];
+  const cacheKey = feeds.join(",");
+  const cached = newsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const active = newsInFlight.get(cacheKey);
+  if (active) return active;
+  const request = loadNews(feeds).then(value => {
+    newsCache.set(cacheKey, { expiresAt: Date.now() + 600_000, value });
+    return value;
+  }).finally(() => {
+    if (newsInFlight.get(cacheKey) === request) newsInFlight.delete(cacheKey);
+  });
+  newsInFlight.set(cacheKey, request);
+  return request;
 }

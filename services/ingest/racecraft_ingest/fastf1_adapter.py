@@ -9,7 +9,7 @@ from typing import Any
 from .analytics import degradation_slope, theoretical_best
 
 
-FASTF1_ARTIFACT_SCHEMA_VERSION = "fastf1-session-v3"
+FASTF1_ARTIFACT_SCHEMA_VERSION = "fastf1-session-v4"
 
 
 def _records(frame: Any) -> list[dict[str, Any]]:
@@ -201,24 +201,34 @@ class FastF1Adapter:
         drivers: dict[str, list[dict[str, Any]]] = {}
         for row in lap_rows:
             drivers.setdefault(_driver_code(row), []).append(row)
+        result_rows = _records(getattr(session, "results", None))
+        all_drivers = set(drivers)
+        all_drivers.update(_driver_code(row) for row in result_rows)
 
         metric_rows: list[dict[str, Any]] = []
         pace_series: list[dict[str, Any]] = []
         stints: list[dict[str, Any]] = []
         racecraft_by_driver: dict[str, dict[str, Any]] = {}
         telemetry_by_driver: dict[str, dict[str, Any]] = {}
+        driver_availability: dict[str, dict[str, Any]] = {}
         cleaned_by_driver: dict[str, list[tuple[int, float]]] = {}
-        for driver, rows in drivers.items():
+        for driver in all_drivers:
+            rows = drivers.get(driver, [])
             cleaned_by_driver[driver] = [sample for row in rows if (sample := _clean_lap(row)) is not None]
         # Do not put a lap on the chart when no driver has a validated value
         # for it. This removes empty x-axis slots while preserving null gaps
         # for a driver whose own lap was rejected by FastF1 validation.
         lap_numbers = sorted({lap for clean in cleaned_by_driver.values() for lap, _ in clean})
 
-        for driver, rows in sorted(drivers.items()):
+        for driver in sorted(all_drivers):
+            rows = drivers.get(driver, [])
             clean = cleaned_by_driver[driver]
             times = [value for _, value in clean]
+            if not rows:
+                driver_availability[driver] = {"status": "no_laps", "validLaps": 0, "telemetrySamples": 0, "reason": "FastF1 returned no lap rows for this driver."}
+                continue
             if not times:
+                driver_availability[driver] = {"status": "no_valid_laps", "validLaps": 0, "telemetrySamples": 0, "reason": "FastF1 returned lap rows, but none passed the accuracy, pit-lap and track-status checks."}
                 continue
             laps_by_number = {lap: value for lap, value in clean}
             sectors = [
@@ -258,8 +268,11 @@ class FastF1Adapter:
             telemetry = _telemetry_snapshot(session, driver, telemetry_dir)
             if telemetry:
                 telemetry_by_driver[driver] = telemetry
+                driver_availability[driver] = {"status": "complete", "validLaps": len(times), "telemetrySamples": int(telemetry.get("sampleCount", 0)), "reason": "Validated laps and fastest-lap telemetry are available."}
+            else:
+                driver_availability[driver] = {"status": "no_telemetry", "validLaps": len(times), "telemetrySamples": 0, "reason": "Validated laps are available, but fastest-lap telemetry is unavailable."}
 
-        for row in _records(getattr(session, "results", None)):
+        for row in result_rows:
             driver = _driver_code(row)
             finish = _number(row.get("Position"))
             grid = _number(row.get("GridPosition"))
@@ -281,17 +294,21 @@ class FastF1Adapter:
             "sessionCode": session_code.upper(),
             "sessionName": _text(getattr(session, "name", None), session_code.upper()),
             "metrics": metric_rows,
+            "driverAvailability": driver_availability,
             "pace": {"laps": lap_numbers, "series": pace_series},
             "stints": stints,
             "racecraftByDriver": racecraft_by_driver,
             "telemetryByDriver": telemetry_by_driver,
             "dataQuality": {
-                "driversSeen": len(drivers),
+                "driversSeen": len(all_drivers),
                 "driversWithValidLaps": len(metric_rows),
                 "validLaps": sum(int(item.get("validLaps", 0)) for item in metric_rows),
                 "telemetryDrivers": len(telemetry_by_driver),
                 "telemetrySamples": sum(int(item.get("sampleCount", 0)) for item in telemetry_by_driver.values()),
                 "stints": len(stints),
+                "driversWithoutLaps": sum(item["status"] == "no_laps" for item in driver_availability.values()),
+                "driversWithoutValidLaps": sum(item["status"] == "no_valid_laps" for item in driver_availability.values()),
+                "driversWithoutTelemetry": sum(item["status"] == "no_telemetry" for item in driver_availability.values()),
             },
         }
         weather = _weather_snapshot(session)

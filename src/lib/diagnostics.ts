@@ -86,7 +86,7 @@ function categoryReason(category: DataCategory, status: DiagnosticStatus, expect
   if (category.status === "awaiting_data") return "OpenF1 publishes session data after the session; the worker will retry and keep the latest published snapshot.";
   if (status === "unavailable") return category.status === "unavailable" ? "Provider request failed or returned no usable records." : "Provider returned an empty dataset.";
   if (status === "partial" && expected !== undefined) return `${category.count} of ${expected} expected records are available.`;
-  if (category.id === "laps" || category.id === "stints") return "Latest session sample is scoped to driver 1 in the current DataHub preview.";
+  if (category.id === "laps" || category.id === "stints") return "Latest session sample includes all drivers returned by OpenF1; the preview table shows the first 10 rows.";
   if (category.id === "race-results" || category.id === "pit-stops") return "Latest completed Race endpoint only; historical rows are available through the provider endpoint.";
   return "Provider returned usable records for this snapshot.";
 }
@@ -108,7 +108,7 @@ export function buildDiagnosticCheck(category: DataCategory): DiagnosticCheck {
     status,
     records: category.count,
     ...(expected === undefined ? {} : { expected, coverage: Math.min(100, Math.round(category.count / expected * 100)) }),
-    ...(category.id === "laps" || category.id === "stints" ? { scope: "latest session · driver 1" } : {}),
+    ...(category.id === "laps" || category.id === "stints" ? { scope: "latest session · all drivers" } : {}),
     endpoint: safeEndpoint(category.endpoint),
     reason: categoryReason(category, status, expected),
   };

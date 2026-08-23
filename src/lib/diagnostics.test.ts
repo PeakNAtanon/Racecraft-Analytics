@@ -37,6 +37,12 @@ describe("data completeness diagnostics", () => {
     expect(check.reason).toContain("Worker artifact");
   });
 
+  it("reports Laps and Stints coverage as all-driver data", () => {
+    const check = buildDiagnosticCheck(category({ id: "laps", label: "Laps & Timing", provider: "OpenF1", count: 120 }));
+    expect(check.scope).toBe("latest session · all drivers");
+    expect(check.reason).toContain("all drivers returned by OpenF1");
+  });
+
   it("treats OpenF1 post-session withholding as processing, not an outage", () => {
     const check = buildDiagnosticCheck(category({ id: "weather", label: "Weather", provider: "OpenF1", status: "awaiting_data", statusLabel: "POST-SESSION PENDING", count: 0 }));
     expect(check.status).toBe("processing");

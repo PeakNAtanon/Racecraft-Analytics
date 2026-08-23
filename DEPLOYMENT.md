@@ -1,8 +1,8 @@
 # Self-hosted deployment
 
-คู่มือนี้ใช้สำหรับ Deploy Racecraft Analytics บน Debian 13 ด้วย Docker Compose โดยเก็บ PostgreSQL ไว้ภายในเครื่อง เปิดเว็บผ่าน Nginx ที่ `127.0.0.1:3333` และให้ Cloudflare Tunnel เป็นตัวเผยแพร่โดเมนสาธารณะ
+คู่มือนี้ใช้สำหรับ Deploy Racecraft Analytics บน Debian 13 ด้วย Docker Compose โดยเก็บ PostgreSQL ไว้ภายในเครื่อง ให้ Traefik รับที่ `127.0.0.1:3333` แล้วส่งต่อเข้า Nginx ภายใน และให้ Cloudflare Tunnel เป็นตัวเผยแพร่โดเมนสาธารณะ
 
-Racecraft runs on one Debian host with Docker Compose. The stack keeps PostgreSQL private, exposes Nginx only at `127.0.0.1:3333`, and lets the existing Cloudflare Tunnel publish the site.
+Racecraft runs on one Debian host with Docker Compose. The stack keeps PostgreSQL private, exposes only Traefik at `127.0.0.1:3333`, routes internally to Nginx, and lets the existing Cloudflare Tunnel publish the site.
 
 ## 0. Install Docker on Debian 13
 
@@ -68,6 +68,8 @@ curl -fsS http://127.0.0.1:3333/api/health
 
 Do not publish port `5432`. Compose creates the database migration schema only on the first `postgres_data` volume creation.
 
+Traefik owns the host bind on `127.0.0.1:3333` and forwards requests to the internal Nginx service. Nginx reuses upstream connections, compresses text responses, and caches only hashed Next.js static assets in a bounded 64 MB tmpfs. HTML and `/api/*` remain uncached. Neither proxy exposes a dashboard or Docker socket. Container logs are rotated automatically; inspect recent output with `docker compose --env-file .env.docker logs --tail=100 traefik nginx web worker`.
+
 ## 3. Route the existing Cloudflare Tunnel
 
 Add this ingress before the catch-all rule in the existing Tunnel configuration, replacing the hostname:
@@ -95,4 +97,4 @@ docker compose --env-file .env.docker up -d --no-build
 docker compose --env-file .env.docker ps
 ```
 
-Check logs with `docker compose logs --tail=100 web worker`. Back up the `postgres_data` volume and telemetry volume before changing database migrations or removing volumes.
+Check logs with `docker compose logs --tail=100 traefik nginx web worker`. Back up the `postgres_data` volume and telemetry volume before changing database migrations or removing volumes.

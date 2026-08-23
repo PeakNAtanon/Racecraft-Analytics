@@ -619,7 +619,7 @@ export async function getSessionAnalytics(options: { sessionKey?: number; season
   return { sessionKey, sessionName, source: "OpenF1", metrics, pace, stints, results, resultsSource, weather: weatherSnapshot };
 }
 
-const seasonComparisonCache = new Map<string, Promise<SeasonComparisonSnapshot>>();
+const seasonComparisonCache = new Map<string, { expiresAt: number; request: Promise<SeasonComparisonSnapshot> }>();
 const comparisonCacheVersion = "provider-adapter-v4";
 
 async function loadSeasonComparison(season: number): Promise<SeasonComparisonSnapshot> {
@@ -701,12 +701,13 @@ async function loadSeasonComparison(season: number): Promise<SeasonComparisonSna
 export async function getSeasonComparison(season = Number(process.env.F1_SEASON ?? "2026")): Promise<SeasonComparisonSnapshot> {
   const cacheKey = `${comparisonCacheVersion}:${season}`;
   const cached = seasonComparisonCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached && cached.expiresAt > Date.now()) return cached.request;
+  if (cached) seasonComparisonCache.delete(cacheKey);
   const request = loadSeasonComparison(season).catch((error) => {
     seasonComparisonCache.delete(cacheKey);
     throw error;
   });
-  seasonComparisonCache.set(cacheKey, request);
+  seasonComparisonCache.set(cacheKey, { expiresAt: Date.now() + 600_000, request });
   return request;
 }
 
@@ -803,7 +804,10 @@ function dateLabel(value: unknown, locale: Locale, timezone = "Asia/Bangkok") {
   return Number.isNaN(date.getTime()) ? text(value) : new Intl.DateTimeFormat(dateLocale, { dateStyle: "medium", timeStyle: "short", timeZone: timezone }).format(date);
 }
 
-export async function getDataHub(timezone = "Asia/Bangkok", locale: Locale = "en"): Promise<DataHubSnapshot> {
+const dataHubCache = new Map<string, { expiresAt: number; value: DataHubSnapshot }>();
+const dataHubInFlight = new Map<string, Promise<DataHubSnapshot>>();
+
+async function loadDataHub(timezone: string, locale: Locale): Promise<DataHubSnapshot> {
   const season = Number(process.env.F1_SEASON ?? "2026");
   const jolpica = (process.env.JOLPICA_BASE_URL ?? "https://api.jolpi.ca/ergast/f1").replace(/\/$/, "");
   const openf1 = (process.env.OPENF1_BASE_URL ?? "https://api.openf1.org/v1").replace(/\/$/, "");
@@ -828,8 +832,8 @@ export async function getDataHub(timezone = "Asia/Bangkok", locale: Locale = "en
   const sessionKey = text(latestSession?.session_key);
   const [weather, laps, stints, openf1PitStops, raceControl, overtakes] = sessionKey !== "—" ? await Promise.all([
     fetchJson(`${openf1}/weather?session_key=${encodeURIComponent(sessionKey)}`),
-    fetchJson(`${openf1}/laps?session_key=${encodeURIComponent(sessionKey)}&driver_number=1`),
-    fetchJson(`${openf1}/stints?session_key=${encodeURIComponent(sessionKey)}&driver_number=1`),
+    fetchJson(`${openf1}/laps?session_key=${encodeURIComponent(sessionKey)}`),
+    fetchJson(`${openf1}/stints?session_key=${encodeURIComponent(sessionKey)}`),
     fetchJson(`${openf1}/pit?session_key=${encodeURIComponent(sessionKey)}`),
     fetchJson(`${openf1}/race_control?session_key=${encodeURIComponent(sessionKey)}`),
     fetchJson(`${openf1}/overtakes?session_key=${encodeURIComponent(sessionKey)}`),
@@ -869,9 +873,9 @@ export async function getDataHub(timezone = "Asia/Bangkok", locale: Locale = "en
       category({ id: "race-results", label: "Race Results", description: `ผล Race ล่าสุด${currentRaceName !== "—" ? ` · ${currentRaceName}` : ""}`, provider: "Jolpica", endpoint: `${jolpica}/current/last/results.json`, ok: results.ok, count: resultRows.length, columns: ["POS", "DRIVER", "TEAM", "POINTS", "STATUS"], rows: resultRows.slice(0, 10).map(r => [text(r.position), `${text(nested(r, "Driver", "givenName"))} ${text(nested(r, "Driver", "familyName"))}`, text(nested(r, "Constructor", "name")), text(r.points), text(r.status)]) }),
       category({ id: "pit-stops", label: "Pit Stops", description: "รอบเข้าพิต, lap และเวลาหยุดจาก Race ล่าสุด", provider: "Jolpica", endpoint: `${jolpica}/current/last/pitstops.json`, ok: pitStops.ok, count: pitStopRows.length, columns: ["DRIVER", "LAP", "STOP", "TIME"], rows: pitStopRows.slice(0, 10).map(p => [text(p.driverId), text(p.lap), text(p.stop), text(p.time)]) }),
       category({ id: "sessions", label: "Sessions", description: "session key, circuit, type และช่วงเวลาใน OpenF1", provider: "OpenF1", endpoint: `${openf1}/sessions?year=${season}`, ok: sessions.ok, statusOverride: openF1Status(sessions.ok), count: sessionRecords.length, columns: ["SESSION KEY", "SESSION", "CIRCUIT", "START", "END"], rows: sessionRows.slice(0, 10).map(s => [text(s.session_key), text(s.session_name), text(s.circuit_short_name), formatDate(s.date_start), formatDate(s.date_end)]) }),
-      category({ id: "laps", label: "Laps & Timing", description: "lap duration และ sector timing ของ session ล่าสุดที่ provider เปิดให้ใช้", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/laps?session_key={session_key}` : `${openf1}/laps?session_key=${sessionKey}&driver_number=1`, ok: laps.ok, statusOverride: openF1Status(laps.ok), count: lapRows.length, columns: ["LAP", "DRIVER", "DURATION", "SECTOR 1", "SECTOR 2"], rows: lapRows.slice(0, 10).map(l => [text(l.lap_number), text(l.driver_number), text(l.lap_duration), text(l.duration_sector_1), text(l.duration_sector_2)]) }),
+      category({ id: "laps", label: "Laps & Timing", description: "lap duration และ sector timing ของนักขับทุกคนใน session ล่าสุดที่ provider เปิดให้ใช้", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/laps?session_key={session_key}` : `${openf1}/laps?session_key=${sessionKey}`, ok: laps.ok, statusOverride: openF1Status(laps.ok), count: lapRows.length, columns: ["LAP", "DRIVER", "DURATION", "SECTOR 1", "SECTOR 2"], rows: lapRows.slice(0, 10).map(l => [text(l.lap_number), text(l.driver_number), text(l.lap_duration), text(l.duration_sector_1), text(l.duration_sector_2)]) }),
       category({ id: "weather", label: "Weather", description: "อุณหภูมิ, ลม, ความชื้น และฝนจาก session ล่าสุด", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/weather?session_key={session_key}` : `${openf1}/weather?session_key=${sessionKey}`, ok: weather.ok, statusOverride: openF1Status(weather.ok), count: weatherRows.length, columns: ["TIME", "AIR °C", "TRACK °C", "HUMIDITY", "RAIN"], rows: weatherRows.slice(0, 10).map(w => [formatDate(w.date), text(w.air_temperature), text(w.track_temperature), text(w.humidity), text(w.rainfall)]) }),
-      category({ id: "stints", label: "Stints & Tyres", description: "stint, compound และช่วง lap ของนักขับจาก session ล่าสุด", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/stints?session_key={session_key}` : `${openf1}/stints?session_key=${sessionKey}&driver_number=1`, ok: stints.ok, statusOverride: openF1Status(stints.ok), count: stintRows.length, columns: ["DRIVER", "STINT", "COMPOUND", "LAP START", "LAP END"], rows: stintRows.slice(0, 10).map(s => [text(s.driver_number), text(s.stint_number), text(s.compound), text(s.lap_start), text(s.lap_end)]) }),
+      category({ id: "stints", label: "Stints & Tyres", description: "stint, compound และช่วง lap ของนักขับทุกคนจาก session ล่าสุด", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/stints?session_key={session_key}` : `${openf1}/stints?session_key=${sessionKey}`, ok: stints.ok, statusOverride: openF1Status(stints.ok), count: stintRows.length, columns: ["DRIVER", "STINT", "COMPOUND", "LAP START", "LAP END"], rows: stintRows.slice(0, 10).map(s => [text(s.driver_number), text(s.stint_number), text(s.compound), text(s.lap_start), text(s.lap_end)]) }),
       category({ id: "openf1-pit-stops", label: "OpenF1 Pit Stops", description: "pit duration, lane duration และ lap ของ session ล่าสุด", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/pit?session_key={session_key}` : `${openf1}/pit?session_key=${sessionKey}`, ok: openf1PitStops.ok, statusOverride: openF1Status(openf1PitStops.ok), count: openf1PitStopRows.length, columns: ["DRIVER", "LAP", "PIT DURATION", "LANE DURATION"], rows: openf1PitStopRows.slice(0, 10).map(p => [text(p.driver_number), text(p.lap_number), text(p.pit_duration), text(p.lane_duration)]) }),
       category({ id: "race-control", label: "Race Control", description: "flag, message, sector และสถานะ track จาก session ล่าสุด", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/race_control?session_key={session_key}` : `${openf1}/race_control?session_key=${sessionKey}`, ok: raceControl.ok, statusOverride: openF1Status(raceControl.ok), count: raceControlRows.length, columns: ["TIME", "CATEGORY", "FLAG", "LAP", "MESSAGE"], rows: raceControlRows.slice(0, 10).map(e => [formatDate(e.date), text(e.category), text(e.flag), text(e.lap_number), text(e.message)]) }),
       category({ id: "overtakes", label: "Overtakes", description: "การแซง, driver pair และตำแหน่งหลังการแซง", provider: "OpenF1", endpoint: sessionKey === "—" ? `${openf1}/overtakes?session_key={session_key}` : `${openf1}/overtakes?session_key=${sessionKey}`, ok: overtakes.ok, statusOverride: latestSessionCode && latestSessionCode !== "R" ? "not_applicable" : openF1Status(overtakes.ok), count: overtakeRows.length, columns: ["TIME", "OVERTAKER", "OVERTAKEN", "POSITION"], rows: overtakeRows.slice(0, 10).map(o => [formatDate(o.date), text(o.overtaking_driver_number), text(o.overtaken_driver_number), text(o.position)]) }),
@@ -879,4 +883,21 @@ export async function getDataHub(timezone = "Asia/Bangkok", locale: Locale = "en
       category({ id: "rss", label: "News RSS", description: "title, description สั้น, timestamp และลิงก์กลับ publisher ต้นทาง", provider: "RSS publishers", endpoint: process.env.RSS_FEEDS ?? "https://www.motorsport.com/rss/f1/news/,https://www.autosport.com/rss/f1/news/", ok: newsRows.length > 0, count: newsRows.length, columns: ["SOURCE", "TITLE", "PUBLISHED", "LINK"], rows: newsRows.slice(0, 10).map(item => [item.source, item.title, formatDate(item.publishedAt), item.url]) }),
     ],
   };
+}
+
+export async function getDataHub(timezone = "Asia/Bangkok", locale: Locale = "en"): Promise<DataHubSnapshot> {
+  const season = Number(process.env.F1_SEASON ?? "2026");
+  const cacheKey = `${season}:${timezone}:${locale}`;
+  const cached = dataHubCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const active = dataHubInFlight.get(cacheKey);
+  if (active) return active;
+  const request = loadDataHub(timezone, locale).then(value => {
+    dataHubCache.set(cacheKey, { expiresAt: Date.now() + 600_000, value });
+    return value;
+  }).finally(() => {
+    if (dataHubInFlight.get(cacheKey) === request) dataHubInFlight.delete(cacheKey);
+  });
+  dataHubInFlight.set(cacheKey, request);
+  return request;
 }
