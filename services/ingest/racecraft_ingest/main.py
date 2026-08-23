@@ -68,7 +68,9 @@ def _run_fastf1(settings: Settings, calendar: dict[str, Any] | None, sessions: l
         round_number = _session_round(calendar, row)
         if round_number is not None:
             candidates.append((ends_at, round_number, code, row))
-    candidates.sort(key=lambda item: item[0])
+    # Process the newest completed session first so the Current Round page
+    # receives a FastF1 artifact promptly; older sessions remain queued.
+    candidates.sort(key=lambda item: (item[1], item[0]), reverse=True)
     adapter = FastF1Adapter(settings.fastf1_cache)
     pending = 0
     for _, round_number, code, _ in candidates:

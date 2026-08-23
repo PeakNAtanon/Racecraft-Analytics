@@ -56,8 +56,10 @@ const trackPaths = [
 // cannot drift back to the old placeholder or the mismatched reference layout.
 const circuitPathOverrides: Record<string, { path: string; startPoint: { x: number; y: number } }> = {
   "red-bull-ring": {
-    path: "M 122.31 115.14 L 81.1 127 L 57.5 88.95 L 37.35 45.69 L 13.06 15.34 L 38.01 13.08 L 115.94 24.12 L 116.87 30.7 L 104.99 42.96 L 95.08 45.61 L 65.99 41.9 L 59.96 46.36 L 58.49 56.5 L 69.27 77.98 L 76.76 82.68 L 103.93 65.35 L 163.94 63.98 L 170.32 69.05 L 177 92.8 L 164.24 102.26 L 122.31 115.14 Z",
-    startPoint: { x: 122.31, y: 115.14 },
+    // Rounded quadratic corners preserve the verified centerline while avoiding
+    // the sharp polygon look of the source GeoJSON at the small card scale.
+    path: "M 114.07 117.51 L 89.34 124.63 Q 81.1 127 76.38 119.39 L 62.22 96.56 Q 57.5 88.95 53.47 80.3 L 41.38 54.34 Q 37.35 45.69 32.49 39.62 L 17.92 21.41 Q 13.06 15.34 18.05 14.89 L 33.02 13.53 Q 38.01 13.08 53.6 15.29 L 100.35 21.91 Q 115.94 24.12 116.13 25.44 L 116.68 29.38 Q 116.87 30.7 114.49 33.15 L 107.37 40.51 Q 104.99 42.96 103.01 43.49 L 97.06 45.08 Q 95.08 45.61 89.26 44.87 L 71.81 42.64 Q 65.99 41.9 64.78 42.79 L 61.17 45.47 Q 59.96 46.36 59.67 48.39 L 58.78 54.47 Q 58.49 56.5 60.65 60.8 L 67.11 73.68 Q 69.27 77.98 70.77 78.92 L 75.26 81.74 Q 76.76 82.68 82.19 79.21 L 98.5 68.82 Q 103.93 65.35 115.93 65.08 L 151.94 64.25 Q 163.94 63.98 165.22 64.99 L 169.04 68.04 Q 170.32 69.05 171.66 73.8 L 175.66 88.05 Q 177 92.8 174.45 94.69 L 166.79 100.37 Q 164.24 102.26 155.85 104.84 L 130.7 112.56 Q 122.31 115.14 114.07 117.51 Z",
+    startPoint: { x: 114.07, y: 117.51 },
   },
 };
 
@@ -65,7 +67,7 @@ const circuitPathOverrides: Record<string, { path: string; startPoint: { x: numb
 // folds back near the start, so a CSS dash over the closed path looks broken
 // even when the dash length is technically correct.
 const circuitSectorPathOverrides: Record<string, string> = {
-  "red-bull-ring": "M 122.31 115.14 L 81.1 127 L 57.5 88.95 L 55.55 84.76",
+  "red-bull-ring": "M 114.07 117.51 L 89.34 124.63 Q 81.1 127 76.38 119.39 L 62.22 96.56 Q 57.5 88.95 55.55 84.76",
 };
 
 // The reference SVGs are already oriented to match the current circuit layouts,

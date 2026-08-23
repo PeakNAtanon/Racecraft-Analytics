@@ -6,7 +6,10 @@ import { getTeamColor } from "./team-colors";
 import { canonicalSessionCode } from "./session-code";
 import { getOpenF1PublicationState, type OpenF1PublicationState } from "./openf1-availability";
 import { getFastF1ArtifactInventory, getFastF1DriverTelemetry, getFastF1SessionArtifact } from "./fastf1-artifacts";
+import { driverHistorySeeds } from "./driver-history";
+import { circuitHistorySeed } from "./circuit-history";
 import { durationLabel, gapLabel } from "./session-result-format";
+import { finiteNumber } from "./number-utils";
 
 type JsonRecord = Record<string, unknown>;
 type ApiState = "live" | "unavailable" | "awaiting_data" | "worker" | "not_applicable";
@@ -137,6 +140,7 @@ export interface StandingsSnapshot {
   source: "Jolpica" | "fallback";
   complete: boolean;
   standings: Standing[];
+  profiles: DriverProfile[];
 }
 
 function parseStandings(rows: JsonRecord[]): Standing[] {
@@ -164,21 +168,34 @@ function parseJolpicaDriver(rows: JsonRecord[], code: string) {
     driverId: text(row.driverId) === "—" ? undefined : text(row.driverId),
     nationality: text(row.nationality) === "—" ? undefined : text(row.nationality),
     driverNumber: finiteNumber(row.permanentNumber),
+    dateOfBirth: text(row.dateOfBirth) === "—" ? undefined : text(row.dateOfBirth),
+    profileUrl: text(row.url) === "—" ? undefined : text(row.url).replace(/^http:\/\//, "https://"),
   };
 }
 
 export async function getSeasonStandings(season = Number(process.env.F1_SEASON ?? "2026")): Promise<StandingsSnapshot> {
   const jolpica = (process.env.JOLPICA_BASE_URL ?? "https://api.jolpi.ca/ergast/f1").replace(/\/$/, "");
-  const response = await fetchJson(`${jolpica}/${season}/driverstandings.json`);
+  const [response, driverResponse] = await Promise.all([
+    fetchJson(`${jolpica}/${season}/driverstandings.json`),
+    fetchJson(`${jolpica}/${season}/drivers.json`),
+  ]);
   const rows = parseStandings(jolpicaDriverStandings(response.data));
+  const driverRows = jolpicaDrivers(driverResponse.data);
   const round = Number(nested(response.data, "MRData", "StandingsTable", "StandingsLists", "0", "round")) || 0;
   const hasCompleteGrid = rows.length >= fallbackStandings.length;
+  const standings = rows.length ? rows : fallbackStandings;
+  const profiles = standings.map((standing) => ({
+    ...standing,
+    ...driverHistorySeeds[standing.code.toUpperCase()],
+    ...parseJolpicaDriver(driverRows, standing.code),
+  }));
   return {
     season,
     round: rows.length ? round : 0,
     source: rows.length ? "Jolpica" : "fallback",
     complete: hasCompleteGrid,
-    standings: rows.length ? rows : fallbackStandings,
+    standings,
+    profiles,
   };
 }
 
@@ -254,18 +271,21 @@ export async function getCircuitStats(round: Round): Promise<CircuitStats> {
     raceDistanceKm: numberOfLaps && Number.isFinite(round.circuit.lengthKm) ? Number((numberOfLaps * round.circuit.lengthKm).toFixed(3)) : undefined,
   };
 }
-export async function getCircuitHistorySummaryBySlug(slug: string): Promise<{ source: "Jolpica" | "fallback"; firstGrandPrix?: number }> {
+export async function getCircuitHistorySummaryBySlug(slug: string): Promise<{ source: "Jolpica" | "reference" | "fallback"; firstGrandPrix?: number; firstRaceName?: string; seasonDebut?: boolean }> {
   const jolpica = (process.env.JOLPICA_BASE_URL ?? "https://api.jolpi.ca/ergast/f1").replace(/\/$/, "");
   const circuitId = circuitProviderIds[slug] ?? slug;
+  const seed = circuitHistorySeed(slug);
   const response = await fetchJson(jolpica + "/circuits/" + encodeURIComponent(circuitId) + "/results.json?limit=1");
   const firstRace = list(nested(response.data, "MRData", "RaceTable", "Races"))[0];
   return {
-    source: firstRace ? "Jolpica" : "fallback",
-    firstGrandPrix: Number(firstRace?.season) || undefined,
+    source: firstRace ? "Jolpica" : seed ? "reference" : "fallback",
+    firstGrandPrix: Number(firstRace?.season) || seed?.firstGrandPrix,
+    firstRaceName: text(firstRace?.raceName) !== "—" ? text(firstRace?.raceName) : seed?.firstRaceName,
+    seasonDebut: seed?.seasonDebut,
   };
 }
-export async function getCircuitHistorySummariesBySlug(slugs: string[]): Promise<Record<string, { source: "Jolpica" | "fallback"; firstGrandPrix?: number }>> {
-  const summaries: Record<string, { source: "Jolpica" | "fallback"; firstGrandPrix?: number }> = {};
+export async function getCircuitHistorySummariesBySlug(slugs: string[]): Promise<Record<string, { source: "Jolpica" | "reference" | "fallback"; firstGrandPrix?: number; firstRaceName?: string; seasonDebut?: boolean }>> {
+  const summaries: Record<string, { source: "Jolpica" | "reference" | "fallback"; firstGrandPrix?: number; firstRaceName?: string; seasonDebut?: boolean }> = {};
   for (let index = 0; index < slugs.length; index += 4) {
     const batch = slugs.slice(index, index + 4);
     const results = await Promise.all(batch.map(async slug => [slug, await getCircuitHistorySummaryBySlug(slug)] as const));
@@ -274,10 +294,6 @@ export async function getCircuitHistorySummariesBySlug(slugs: string[]): Promise
   return summaries;
 }
 
-function finiteNumber(value: unknown) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : undefined;
-}
 
 function weatherBoolean(value: unknown): boolean | undefined { const normalized = String(value).toLowerCase(); if (value === true || normalized === "true" || normalized === "1") return true; if (value === false || normalized === "false" || normalized === "0") return false; return undefined }
 
@@ -484,7 +500,10 @@ export async function getSessionAnalytics(options: { sessionKey?: number; season
   }
 
   const selectedSessionCode = options.sessionCode ?? canonicalSessionCode(sessionName);
-  const fastF1Artifact = await getFastF1SessionArtifact({ season, round: options.round, sessionCode: selectedSessionCode, sessionKey });
+  const latestPublishedArtifact = options.round === undefined
+    ? (await getFastF1ArtifactInventory(season)).filter(item => item.sessionCode === (selectedSessionCode === "SPR" ? "S" : selectedSessionCode)).at(-1)
+    : undefined;
+  const fastF1Artifact = await getFastF1SessionArtifact({ season, round: options.round ?? latestPublishedArtifact?.round, sessionCode: selectedSessionCode, sessionKey });
   if (!sessionKey && fastF1Artifact) return fastF1Artifact;
   if (!sessionKey) return fallbackSessionAnalytics(undefined, sessionName);
 
@@ -711,7 +730,7 @@ export async function getDriverAnalysis(options: DriverAnalysisOptions): Promise
   const standing = comparison.drivers.find((driver) => driver.code.toUpperCase() === code);
   if (!standing) return null;
 
-  const profile: DriverProfile = { ...standing, ...parseJolpicaDriver(jolpicaDrivers(driverResponse.data), code) };
+  const profile: DriverProfile = { ...standing, ...driverHistorySeeds[code], ...parseJolpicaDriver(jolpicaDrivers(driverResponse.data), code) };
   const sessions: DriverAnalysisSession[] = comparison.sessions.map((session) => {
     const result = session.results.find((item) => item.code.toUpperCase() === code);
     const started = Date.parse(session.startsAt) <= Date.now();

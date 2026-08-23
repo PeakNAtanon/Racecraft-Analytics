@@ -7,6 +7,7 @@ import { getTeamColor, getTeamMark } from "@/lib/team-colors";
 export default async function Standings() {
   const [snapshot, locale] = await Promise.all([getSeasonStandings(), getLocale()]);
   const standings = snapshot.standings;
+  const profiles = Object.fromEntries(snapshot.profiles.map((profile) => [profile.code.toUpperCase(), profile]));
   const snapshotLabel = snapshot.round > 0
     ? `${snapshot.season} · AFTER ROUND ${String(snapshot.round).padStart(2, "0")}`
     : `${snapshot.season} · LOCAL FALLBACK`;
@@ -18,10 +19,12 @@ export default async function Standings() {
       <section className="section standings-feature">
         <div className="section-heading">
           <div>
-            <div className="eyebrow">DRIVER GRID</div>
+            <div className="eyebrow">DRIVER GRID · {standings.length} PROFILES</div>
             <h2>The names in the fight</h2>
           </div>
           <p>
+            Open <span>DRIVER HISTORY</span> on any card for the driver’s F1 debut, number, nationality, date of birth and source profile.
+            <br />
             <span>UPDATED SNAPSHOT</span>
             <br />
             {snapshotLabel}
@@ -29,7 +32,7 @@ export default async function Standings() {
             <small>{snapshot.source === "Jolpica" ? snapshot.complete ? "JOLPICA API" : "JOLPICA API · PARTIAL" : "CACHED FALLBACK"}</small>
           </p>
         </div>
-        <DriverGrid drivers={standings} />
+        <DriverGrid drivers={standings} profiles={profiles} locale={locale} />
       </section>
 
       <section className="section panel standings-table-panel">

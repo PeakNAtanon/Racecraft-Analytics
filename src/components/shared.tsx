@@ -3,7 +3,7 @@ import { CountryFlag } from "@/components/country-flag";
 import { message, type Locale } from "@/lib/i18n";
 import { getTeamColor, getTeamMark } from "@/lib/team-colors";
 import { displayTimezone, timezoneShortLabel, type TimezoneId, type TimezoneMode } from "@/lib/timezone";
-import { Metric, Round, Standing } from "@/lib/types";
+import { DriverProfile, Metric, Round, Standing } from "@/lib/types";
 
 export function TrackMap({ round }: { round: Round }) {
   const startPoint = round.circuit.startPoint ?? { x: 20, y: 75 };
@@ -61,13 +61,19 @@ export function MetricGrid({ items }: { items: Metric[] }) {
   return <div className="metric-grid">{items.map((m, index) => <article className="metric-card" key={m.id} style={{ "--tone": `var(--${m.tone ?? "cyan"})` } as React.CSSProperties}><div className="metric-topline"><span>0{index + 1}</span><div className="metric-label">{m.label}</div></div><div className="metric-value">{m.value}</div><div className="metric-note">{m.note}</div></article>)}</div>;
 }
 
-export function DriverCard({ driver }: { driver: Standing }) {
-  const color = getTeamColor(driver.team, driver.color);
-  return <article className="driver-card" id={`driver-${driver.code.toLowerCase()}`} style={{ "--team-color": color } as React.CSSProperties}><div className="driver-card-top"><span className="driver-rank">P{String(driver.position).padStart(2, "0")}</span><span className="driver-code">{driver.code}</span></div><div className="driver-card-body"><div className="team-mark" aria-hidden="true">{getTeamMark(driver.team)}</div><div className="driver-identity"><h3>{driver.name}</h3><p><span className="team-color-swatch" aria-hidden="true" />{driver.team}</p></div></div><div className="driver-stats"><span><small>POINTS</small><b>{driver.points ?? "—"}</b></span><span><small>WINS</small><b>{driver.wins ?? "—"}</b></span></div></article>;
+function driverDate(value: string | undefined, locale: Locale) {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale === "th" ? "th-TH" : "en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(date);
 }
 
-export function DriverGrid({ drivers }: { drivers: Standing[] }) {
-  return <div className="driver-grid">{drivers.map(driver => <DriverCard driver={driver} key={driver.code} />)}</div>;
+export function DriverCard({ driver, profile, locale = "en" }: { driver: Standing; profile?: DriverProfile; locale?: Locale }) {
+  const color = getTeamColor(driver.team, driver.color);
+  return <article className="driver-card" id={`driver-${driver.code.toLowerCase()}`} style={{ "--team-color": color } as React.CSSProperties}><div className="driver-card-top"><span className="driver-rank">P{String(driver.position).padStart(2, "0")}</span><span className="driver-code">{driver.code}</span></div><div className="driver-card-body"><div className="team-mark" aria-hidden="true">{getTeamMark(driver.team)}</div><div className="driver-identity"><h3>{driver.name}</h3><p><span className="team-color-swatch" aria-hidden="true" />{driver.team}</p></div></div><div className="driver-stats"><span><small>POINTS</small><b>{driver.points ?? "—"}</b></span><span><small>WINS</small><b>{driver.wins ?? "—"}</b></span></div>{profile ? <><p className="driver-card-profile-summary">{profile.nationality ?? "—"} · F1 debut {profile.firstF1Season ?? "—"}</p><details className="driver-history-details"><summary>DRIVER HISTORY</summary><div className="driver-history-grid"><span><small>F1 DEBUT</small><b>{profile.firstF1Season ?? "—"}</b></span><span><small>NUMBER</small><b>{profile.driverNumber === undefined ? "—" : `#${profile.driverNumber}`}</b></span><span><small>NATIONALITY</small><b>{profile.nationality ?? "—"}</b></span><span><small>BORN</small><b>{driverDate(profile.dateOfBirth, locale)}</b></span></div>{profile.profileUrl ? <a href={profile.profileUrl} target="_blank" rel="noopener noreferrer">SOURCE PROFILE ↗</a> : <small className="driver-history-source">JOLPICA PROFILE DATA</small>}</details></> : null}</article>;
+}
+
+export function DriverGrid({ drivers, profiles = {}, locale = "en" }: { drivers: Standing[]; profiles?: Record<string, DriverProfile>; locale?: Locale }) {
+  return <div className="driver-grid">{drivers.map(driver => <DriverCard driver={driver} profile={profiles[driver.code.toUpperCase()]} locale={locale} key={driver.code} />)}</div>;
 }
 
 export function RoundCard({ item, timezone = "Asia/Bangkok", timezoneMode = "my", locale = "en" }: { item: Round; timezone?: TimezoneId; timezoneMode?: TimezoneMode; locale?: Locale }) {

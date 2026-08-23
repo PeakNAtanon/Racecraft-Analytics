@@ -5,7 +5,7 @@ export interface SessionInfo { code: SessionCode; name: string; startsAt: string
 export interface Circuit { id: string; name: string; locality: string; country: string; lengthKm: number; corners: number; path: string; sectorPath?: string; pathTransform?: string; startPoint?: { x: number; y: number }; builtYear?: number }
 export interface Round { season: number; round: number; slug: string; name: string; raceStartsAt: string; circuit: Circuit; sessions: SessionInfo[] }
 export interface Standing { position: number; code: string; name: string; team: string; points?: number; wins?: number; color?: string }
-export interface DriverProfile extends Standing { driverId?: string; driverNumber?: number; nationality?: string }
+export interface DriverProfile extends Standing { driverId?: string; driverNumber?: number; nationality?: string; dateOfBirth?: string; profileUrl?: string; firstF1Season?: number }
 export interface Metric { id: string; label: string; value: string; note: string; tone?: "red" | "cyan" | "amber" | "green" }
 export interface PaceSeries { code: string; name: string; values: Array<number | null>; color?: string }
 export interface PaceChartData { sessionLabel: string; source: "FastF1" | "OpenF1" | "fallback"; laps: number[]; series: PaceSeries[]; defaultCodes?: string[] }

@@ -1,7 +1,4 @@
-function finiteNumber(value: unknown) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : undefined;
-}
+import { finiteNumber } from "./number-utils";
 
 function text(value: unknown) {
   return value === null || value === undefined ? "—" : String(value);
