@@ -7,7 +7,7 @@ import { SeasonComparisonChart } from "@/components/season-comparison-chart";
 import { message, type Locale } from "@/lib/i18n";
 import { selectDriverPair } from "@/lib/compare";
 import { getTeamColor } from "@/lib/team-colors";
-import type { PaceChartData, SeasonComparisonSnapshot, SessionCode, Standing, StintSnapshot } from "@/lib/types";
+import type { DriverTelemetrySnapshot, PaceChartData, SeasonComparisonSnapshot, SessionCode, Standing, StintSnapshot } from "@/lib/types";
 
 function initialVsSelection(drivers: Standing[], pace: PaceChartData, requestedCodes: string[] = []) {
   return selectDriverPair(drivers.map(driver => driver.code), pace.defaultCodes ?? [], requestedCodes);
@@ -17,7 +17,7 @@ function initialSessionFilter(comparison: SeasonComparisonSnapshot): SessionCode
   return comparison.sessions.some(session => session.sessionCode === "R" && session.results.length) ? "R" : "ALL";
 }
 
-export function CompareLab({ drivers, pace, comparison, stints, locale, initialDriverCodes = [] }: { drivers: Standing[]; pace: PaceChartData; comparison: SeasonComparisonSnapshot; stints: StintSnapshot[]; locale: Locale; initialDriverCodes?: string[] }) {
+export function CompareLab({ drivers, pace, comparison, stints, telemetryByDriver, locale, initialDriverCodes = [] }: { drivers: Standing[]; pace: PaceChartData; comparison: SeasonComparisonSnapshot; stints: StintSnapshot[]; telemetryByDriver?: Record<string, DriverTelemetrySnapshot>; locale: Locale; initialDriverCodes?: string[] }) {
   const [visibleDrivers, setVisibleDrivers] = useState(() => drivers.map(driver => driver.code));
   const [vsDrivers, setVsDrivers] = useState(() => initialVsSelection(drivers, pace, initialDriverCodes));
   const [activeVsSlot, setActiveVsSlot] = useState<0 | 1>(0);
@@ -97,7 +97,7 @@ export function CompareLab({ drivers, pace, comparison, stints, locale, initialD
       </fieldset>
     </section>
 
-    <ComparisonOverview drivers={visibleDriverRows} sessions={filteredSessions} pace={pace} stints={stints} activeDrivers={vsDrivers} locale={locale} />
+    <ComparisonOverview drivers={visibleDriverRows} sessions={filteredSessions} pace={pace} stints={stints} telemetryByDriver={telemetryByDriver} activeDrivers={vsDrivers} locale={locale} />
 
     <section className="panel compare-summary-panel">
       <div className="section-heading"><div><p className="eyebrow">{comparison.season} · {vsDrivers.join(" VS ")} · RESULT REFERENCE · {sessionFilter}</p><h2>{message(locale, "comparisonAllSessions")}</h2></div><p>{hasSeasonResults ? (comparison.source === "Jolpica" ? "JOLPICA · RESULTS" : "OPENF1 · SESSION_RESULT") : "RESULT DATA UNAVAILABLE"}</p></div>

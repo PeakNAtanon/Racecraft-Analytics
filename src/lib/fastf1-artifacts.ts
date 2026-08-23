@@ -3,6 +3,7 @@ import path from "node:path";
 import type { DriverRacecraftSnapshot, DriverTelemetrySnapshot, FastF1DriverMetrics, Metric, PaceChartData, SessionAnalyticsSnapshot, StintSnapshot } from "@/lib/types";
 
 type ArtifactMetric = { driver?: string; validLaps?: number; cleanLapMedian?: number; bestLap?: number; consistency?: number | null; degradationSlope?: number | null; theoreticalBest?: number | null };
+type ArtifactWeather = { sampleCount?: number; latest?: { timestamp?: string; airTemperature?: number; trackTemperature?: number; humidity?: number; windSpeed?: number; windDirection?: number; rainfall?: boolean } };
 type Artifact = {
   provider?: string;
   status?: string;
@@ -13,6 +14,7 @@ type Artifact = {
   stints?: Array<{ driver?: string; stint?: number; compound?: string; startLap?: number; endLap?: number; lapCount?: number }>;
   racecraftByDriver?: Record<string, { positionsGained?: number; gridPosition?: number; finishPosition?: number }>;
   telemetryByDriver?: Record<string, { available?: boolean; sampleCount?: number; fields?: string[]; samples?: Array<{ timestamp?: string; speed?: number; throttle?: number; brake?: number; gear?: number }> }>;
+  weather?: ArtifactWeather;
 };
 
 function artifactRoot() {
@@ -104,8 +106,31 @@ function number(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function median(values: number[]) {
+  if (!values.length) return undefined;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
 function metricValue(value: number | undefined, suffix = " s") {
   return value === undefined ? "—" : `${value.toFixed(3)}${suffix}`;
+}
+
+function artifactWeatherSnapshot(artifact: Artifact, sessionName: string) {
+  const latest = artifact.weather?.latest;
+  if (!latest) return undefined;
+  return {
+    source: "FastF1" as const,
+    sessionName,
+    ...(typeof latest.timestamp === "string" ? { sampledAt: latest.timestamp } : {}),
+    ...(number(latest.airTemperature) === undefined ? {} : { airTemperature: number(latest.airTemperature) }),
+    ...(number(latest.trackTemperature) === undefined ? {} : { trackTemperature: number(latest.trackTemperature) }),
+    ...(number(latest.humidity) === undefined ? {} : { humidity: number(latest.humidity) }),
+    ...(number(latest.windSpeed) === undefined ? {} : { windSpeed: number(latest.windSpeed) }),
+    ...(number(latest.windDirection) === undefined ? {} : { windDirection: number(latest.windDirection) }),
+    ...(typeof latest.rainfall === "boolean" ? { rainfall: latest.rainfall } : {}),
+  };
 }
 
 function toSnapshot(artifact: Artifact, sessionKey: number | undefined, results: SessionAnalyticsSnapshot["results"], resultsSource: SessionAnalyticsSnapshot["resultsSource"]): SessionAnalyticsSnapshot {
@@ -142,11 +167,24 @@ function toSnapshot(artifact: Artifact, sessionKey: number | undefined, results:
     series: (artifact.pace?.series ?? []).map(item => ({ code: item.code ?? "—", name: item.name ?? item.code ?? "Driver", values: item.values ?? [] })),
     defaultCodes: (artifact.pace?.series ?? []).slice(0, 2).map(item => item.code ?? "—"),
   };
+  const paceLaps = artifact.pace?.laps ?? [];
+  const paceByDriver = new Map((artifact.pace?.series ?? []).map(item => [item.code?.toUpperCase() ?? "", item.values ?? []]));
   const stints: StintSnapshot[] = (artifact.stints ?? []).flatMap(item => {
     if (!item.driver || item.startLap === undefined || item.endLap === undefined) return [];
-    return [{ driverNumber: 0, code: item.driver, name: item.driver, team: "FastF1", stint: item.stint ?? 0, compound: item.compound ?? "UNKNOWN", startLap: item.startLap, endLap: item.endLap, lapCount: item.lapCount ?? Math.max(0, item.endLap - item.startLap + 1) }];
+    const values = paceLaps.flatMap((lap, index) => {
+      if (lap < item.startLap! || lap > item.endLap!) return [];
+      const value = number(paceByDriver.get(item.driver!.toUpperCase())?.[index]);
+      return value === undefined ? [] : [value];
+    });
+    const quarter = Math.max(1, Math.floor(values.length / 4));
+    const earlyMedian = median(values.slice(0, quarter));
+    const lateMedian = median(values.slice(-quarter));
+    return [{ driverNumber: 0, code: item.driver, name: item.driver, team: "FastF1", stint: item.stint ?? 0, compound: item.compound ?? "UNKNOWN", startLap: item.startLap, endLap: item.endLap, lapCount: item.lapCount ?? Math.max(0, item.endLap - item.startLap + 1), ...(median(values) === undefined ? {} : { medianLap: median(values) }), ...(earlyMedian === undefined || lateMedian === undefined ? {} : { degradationPerLap: (lateMedian - earlyMedian) / Math.max(1, item.endLap - item.startLap) }) }];
   });
-  return { sessionKey, sessionName: artifact.sessionName ?? artifact.sessionCode ?? "FastF1 session", source: "FastF1", metrics: fastMetrics, driverMetrics, racecraftByDriver, pace, stints, results, resultsSource };
+  const telemetryByDriver: Record<string, DriverTelemetrySnapshot> = Object.fromEntries(Object.entries(artifact.telemetryByDriver ?? {}).map(([code, item]) => [code.toUpperCase(), { available: item.available === true && (item.fields?.length ?? 0) > 0, sampleCount: item.sampleCount ?? item.samples?.length ?? 0, fields: item.fields ?? [], samples: item.samples ?? [], source: "FastF1" }]));
+  const resolvedSessionName = artifact.sessionName ?? artifact.sessionCode ?? "FastF1 session";
+  const weather = artifactWeatherSnapshot(artifact, resolvedSessionName);
+  return { sessionKey, sessionName: resolvedSessionName, source: "FastF1", metrics: fastMetrics, driverMetrics, racecraftByDriver, telemetryByDriver, pace, stints, results, resultsSource, ...(weather ? { weather } : {}) };
 }
 
 export async function getFastF1SessionArtifact(options: { season: number; round?: number; sessionCode?: string; sessionKey?: number; results?: SessionAnalyticsSnapshot["results"]; resultsSource?: SessionAnalyticsSnapshot["resultsSource"] }): Promise<SessionAnalyticsSnapshot | null> {

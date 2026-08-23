@@ -4,7 +4,7 @@ import ReactECharts from "echarts-for-react";
 import type { Locale } from "@/lib/i18n";
 import { message } from "@/lib/i18n";
 import { getTeamColor } from "@/lib/team-colors";
-import type { ComparisonSession, PaceChartData, StintSnapshot, Standing } from "@/lib/types";
+import type { ComparisonSession, DriverTelemetrySnapshot, PaceChartData, StintSnapshot, Standing } from "@/lib/types";
 
 const theme = { background: "#0a0c0f", surface: "#12161c", text: "#f5f7fa", muted: "#a6b0bf", line: "#29313d", cyan: "#39c6f4", red: "#ff3b30", amber: "#f4b740", green: "#3ddc97" };
 
@@ -127,7 +127,16 @@ function TyrePerformanceChart({ stints, activeDrivers }: { stints: StintSnapshot
   return <div className="chart-wrap tyre-performance-chart" role="group" aria-label="Tyre stint median pace chart"><ReactECharts notMerge style={{ height: "100%", minHeight: 300 }} option={option} opts={{ renderer: "svg" }} /></div>;
 }
 
-export function ComparisonOverview({ drivers, sessions, pace, stints, activeDrivers, locale }: { drivers: Standing[]; sessions: ComparisonSession[]; pace: PaceChartData; stints: StintSnapshot[]; activeDrivers: string[]; locale: Locale }) {
+function TelemetryComparisonChart({ drivers, activeDrivers, telemetryByDriver }: { drivers: Standing[]; activeDrivers: string[]; telemetryByDriver?: Record<string, DriverTelemetrySnapshot> }) {
+  const driverByCode = new Map(drivers.map(driver => [driver.code, driver]));
+  const traces = activeDrivers.map(code => ({ code, telemetry: telemetryByDriver?.[code] })).filter(item => item.telemetry?.available && item.telemetry.samples.some(sample => typeof sample.speed === "number" && Number.isFinite(sample.speed)));
+  if (!traces.length) return <div className="telemetry-status"><span className="status-dot pending" aria-hidden="true" /><div><strong>FastF1 telemetry is not available for the selected drivers</strong><p>The comparison will show speed traces after a validated artifact includes the selected drivers.</p></div></div>;
+  const sampleCount = Math.max(...traces.map(trace => trace.telemetry?.samples.length ?? 0));
+  const option = { backgroundColor: "transparent", animation: false, aria: { enabled: true }, grid: { left: 54, right: 24, top: 34, bottom: 42, containLabel: true }, tooltip: { trigger: "axis", confine: true, backgroundColor: `${theme.surface}f7`, borderColor: `${theme.cyan}66`, textStyle: { color: theme.text, fontFamily: "JetBrains Mono, monospace", fontSize: 11 }, valueFormatter: (value: unknown) => chartTooltipValue(value, " km/h") }, legend: { top: 4, left: 12, textStyle: { color: theme.muted, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }, data: traces.map(trace => trace.code) }, xAxis: { type: "category", data: Array.from({ length: sampleCount }, (_, index) => index + 1), name: "SAMPLE", nameTextStyle: { color: theme.muted, fontSize: 9, fontFamily: "JetBrains Mono, monospace" }, axisLabel: { color: theme.muted, fontSize: 9, fontFamily: "JetBrains Mono, monospace", hideOverlap: true }, axisLine: { lineStyle: { color: theme.line } }, axisTick: { show: false } }, yAxis: { type: "value", name: "SPEED · KM/H", nameTextStyle: { color: theme.muted, fontSize: 9, fontFamily: "JetBrains Mono, monospace" }, axisLabel: { color: theme.muted, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }, axisLine: { show: false }, splitLine: { lineStyle: { color: "#ffffff14", type: "dashed" } } }, series: traces.map(trace => ({ name: trace.code, type: "line", data: trace.telemetry?.samples.map(sample => sample.speed ?? null), showSymbol: false, connectNulls: false, lineStyle: { color: getTeamColor(driverByCode.get(trace.code)?.team, driverByCode.get(trace.code)?.color), width: 2 }, itemStyle: { color: getTeamColor(driverByCode.get(trace.code)?.team, driverByCode.get(trace.code)?.color) } })) };
+  return <div className="chart-wrap comparison-telemetry-chart" role="group" aria-label="FastF1 speed telemetry comparison"><ReactECharts notMerge style={{ height: "100%", minHeight: 320 }} option={option} opts={{ renderer: "svg" }} /></div>;
+}
+
+export function ComparisonOverview({ drivers, sessions, pace, stints, telemetryByDriver, activeDrivers, locale }: { drivers: Standing[]; sessions: ComparisonSession[]; pace: PaceChartData; stints: StintSnapshot[]; telemetryByDriver?: Record<string, DriverTelemetrySnapshot>; activeDrivers: string[]; locale: Locale }) {
   const rows = buildSummary(drivers, sessions, pace);
   return <>
     <section className="comparison-overview-block">
@@ -137,6 +146,6 @@ export function ComparisonOverview({ drivers, sessions, pace, stints, activeDriv
     </section>
     <section className="comparison-overview-block"><div className="section-heading"><div><div className="eyebrow">SEASON FORM</div><h2>{message(locale, "comparisonPositionHeatmap")}</h2></div><p>POSITION · LOWER IS BETTER</p></div><div className="overview-card"><div className="chart-context"><span>SESSION RESULTS · PROVISIONAL WHEN INCOMPLETE</span><span>{sessions.length} SESSIONS</span></div><PositionHeatmap rows={rows} sessions={sessions} locale={locale} /></div></section>
     <section className="comparison-deep-grid"><article className="overview-card"><div className="chart-card-heading"><div><div className="eyebrow">RACECRAFT</div><h3>{message(locale, "comparisonStrategy")}</h3></div><span>{stints.length ? "FASTF1 · VALIDATED ARTIFACT" : "FASTF1 · PENDING"}</span></div><StrategyTimeline stints={stints} activeDrivers={activeDrivers} /></article><article className="overview-card"><div className="chart-card-heading"><div><div className="eyebrow">TYRE PERFORMANCE</div><h3>{message(locale, "comparisonTyrePerformance")}</h3></div><span>{stints.length ? "FASTF1 · DEGRADATION" : "FASTF1 · PENDING"}</span></div><TyrePerformanceChart stints={stints} activeDrivers={activeDrivers} /></article></section>
-    <section className="overview-card comparison-telemetry-card"><div className="chart-card-heading"><div><div className="eyebrow">ADVANCED DATA</div><h3>{message(locale, "comparisonTelemetry")}</h3></div><span>FASTF1 WORKER ARTIFACT</span></div><div className="telemetry-status"><span className="status-dot pending" aria-hidden="true" /><div><strong>{message(locale, "comparisonTelemetryUnavailable")}</strong><p>Validated speed, throttle, brake and gear traces appear here after the FastF1 worker publishes the session artifact. No OpenF1 values are substituted into analysis charts.</p></div></div></section>
+    <section className="overview-card comparison-telemetry-card"><div className="chart-card-heading"><div><div className="eyebrow">ADVANCED DATA</div><h3>{message(locale, "comparisonTelemetry")}</h3></div><span>{telemetryByDriver ? "FASTF1 · SPEED TRACE" : "FASTF1 WORKER ARTIFACT"}</span></div><TelemetryComparisonChart drivers={drivers} activeDrivers={activeDrivers} telemetryByDriver={telemetryByDriver} /></section>
   </>;
 }

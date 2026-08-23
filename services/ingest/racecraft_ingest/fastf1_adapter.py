@@ -9,7 +9,7 @@ from typing import Any
 from .analytics import degradation_slope, theoretical_best
 
 
-FASTF1_ARTIFACT_SCHEMA_VERSION = "fastf1-session-v2"
+FASTF1_ARTIFACT_SCHEMA_VERSION = "fastf1-session-v3"
 
 
 def _records(frame: Any) -> list[dict[str, Any]]:
@@ -54,6 +54,47 @@ def _text(value: Any, default: str = "") -> str:
 
 def _truthy(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _boolean(value: Any) -> bool | None:
+    if _missing(value):
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "y"}:
+        return True
+    if normalized in {"0", "false", "no", "n"}:
+        return False
+    return None
+
+
+def _weather_snapshot(session: Any) -> dict[str, Any] | None:
+    rows = _records(getattr(session, "weather_data", None))
+    if not rows:
+        return None
+
+    latest = rows[-1]
+    latest_data: dict[str, Any] = {}
+    timestamp = latest.get("Time") or latest.get("Date")
+    if not _missing(timestamp):
+        latest_data["timestamp"] = str(timestamp)
+
+    field_map = {
+        "AirTemp": "airTemperature",
+        "TrackTemp": "trackTemperature",
+        "Humidity": "humidity",
+        "WindSpeed": "windSpeed",
+        "WindDirection": "windDirection",
+    }
+    for source, target in field_map.items():
+        value = _number(latest.get(source))
+        if value is not None:
+            latest_data[target] = value
+
+    rainfall = _boolean(latest.get("Rainfall"))
+    if rainfall is not None:
+        latest_data["rainfall"] = rainfall
+
+    return {"sampleCount": len(rows), "latest": latest_data}
 
 
 def _clean_lap(row: Mapping[str, Any]) -> tuple[int, float] | None:
@@ -244,6 +285,17 @@ class FastF1Adapter:
             "stints": stints,
             "racecraftByDriver": racecraft_by_driver,
             "telemetryByDriver": telemetry_by_driver,
+            "dataQuality": {
+                "driversSeen": len(drivers),
+                "driversWithValidLaps": len(metric_rows),
+                "validLaps": sum(int(item.get("validLaps", 0)) for item in metric_rows),
+                "telemetryDrivers": len(telemetry_by_driver),
+                "telemetrySamples": sum(int(item.get("sampleCount", 0)) for item in telemetry_by_driver.values()),
+                "stints": len(stints),
+            },
         }
+        weather = _weather_snapshot(session)
+        if weather:
+            artifact["weather"] = weather
         target.write_text(json.dumps(artifact, ensure_ascii=False, default=str), encoding="utf-8")
         return artifact

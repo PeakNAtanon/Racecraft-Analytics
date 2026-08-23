@@ -19,15 +19,16 @@ function category(overrides: Partial<DataCategory>): DataCategory {
 }
 
 describe("data completeness diagnostics", () => {
-  it("reports full and partial expected-grid coverage without exposing query secrets", () => {
+  it("uses provider truth instead of inventing a fixed grid size", () => {
     const complete = buildDiagnosticCheck(category({}));
     const partial = buildDiagnosticCheck(category({ count: 11 }));
 
     expect(complete.status).toBe("live");
-    expect(complete.coverage).toBe(100);
+    expect(complete.expected).toBeUndefined();
+    expect(complete.coverage).toBeUndefined();
     expect(complete.endpoint).toBe("https://api.jolpi.ca/ergast/f1/2026/drivers.json");
-    expect(partial.status).toBe("partial");
-    expect(partial.coverage).toBe(50);
+    expect(partial.status).toBe("live");
+    expect(partial.coverage).toBeUndefined();
   });
 
   it("marks worker artifacts as processing and records their scope", () => {
@@ -42,7 +43,14 @@ describe("data completeness diagnostics", () => {
     expect(check.reason).toContain("publishes session data after the session");
   });
 
+  it("marks race-only Overtakes as not applicable outside a Race session", () => {
+    const check = buildDiagnosticCheck(category({ id: "overtakes", label: "Overtakes", provider: "OpenF1", status: "not_applicable", statusLabel: "NOT APPLICABLE", count: 0 }));
+    expect(check.status).toBe("not_applicable");
+    expect(check.reason).toContain("only available for Race sessions");
+  });
+
   it("uses readable labels for API consumers and UI", () => {
     expect(diagnosticStatusLabel("not_configured")).toBe("NOT CONFIGURED");
+    expect(diagnosticStatusLabel("not_applicable")).toBe("NOT APPLICABLE");
   });
 });

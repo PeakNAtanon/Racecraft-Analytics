@@ -39,6 +39,7 @@ export function CompletenessDashboard({ snapshot }: { snapshot: CompletenessSnap
       <article className="is-live"><span>LIVE</span><strong>{snapshot.summary.live}</strong><small>usable now</small></article>
       <article className="is-partial"><span>PARTIAL</span><strong>{snapshot.summary.partial}</strong><small>coverage below expected</small></article>
       <article className={blocked ? "is-blocked" : "is-live"}><span>BLOCKED</span><strong>{blocked}</strong><small>unavailable / pending / unconfigured</small></article>
+      <article className="is-not-applicable"><span>NOT APPLICABLE</span><strong>{snapshot.summary.notApplicable}</strong><small>not supported for this session</small></article>
       <article><span>RECORDS</span><strong>{snapshot.summary.totalRecords.toLocaleString("en-US")}</strong><small>provider snapshot total</small></article>
     </section>
     <section className="diagnostic-context panel">
@@ -52,7 +53,7 @@ export function CompletenessDashboard({ snapshot }: { snapshot: CompletenessSnap
     </section>
     <section className="diagnostic-provider-section">
       <div className="section-heading"><div><div className="eyebrow">PROVIDER HEALTH</div><h2>Channels at a glance</h2></div><p>CONFIGURATION IS NOT PROOF OF DATA COMPLETENESS</p></div>
-      <div className="diagnostic-provider-grid">{snapshot.providers.map(provider => <article className="diagnostic-provider-card" key={provider.id}><div className="diagnostic-provider-top"><div><span className="eyebrow">{provider.id}</span><h3>{provider.label}</h3></div><ConfigurationPill value={provider.configuration} /></div><div className="diagnostic-provider-stats"><span><b>{provider.liveChecks}</b><small>LIVE</small></span><span><b>{provider.partialChecks}</b><small>PARTIAL</small></span><span><b>{provider.blockedChecks}</b><small>BLOCKED</small></span></div><code>{provider.endpoint}</code></article>)}</div>
+      <div className="diagnostic-provider-grid">{snapshot.providers.map(provider => <article className="diagnostic-provider-card" key={provider.id}><div className="diagnostic-provider-top"><div><span className="eyebrow">{provider.id}</span><h3>{provider.label}</h3></div><ConfigurationPill value={provider.configuration} /></div><div className="diagnostic-provider-stats"><span><b>{provider.liveChecks}</b><small>LIVE</small></span><span><b>{provider.partialChecks}</b><small>PARTIAL</small></span><span><b>{provider.blockedChecks}</b><small>BLOCKED</small></span><span><b>{provider.notApplicableChecks}</b><small>N/A</small></span></div><code>{provider.endpoint}</code></article>)}</div>
     </section>
     <section className="diagnostic-check-section panel" id="checks">
       <div className="section-heading"><div><div className="eyebrow">FIELD-LEVEL CHECKS</div><h2>Completeness matrix</h2></div><p>RECORDS · COVERAGE · SCOPE · REASON</p></div>

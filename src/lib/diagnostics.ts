@@ -1,6 +1,6 @@
 import { getDataHub, type DataCategory } from "./data-api";
 
-export type DiagnosticStatus = "live" | "partial" | "processing" | "unavailable" | "not_configured";
+export type DiagnosticStatus = "live" | "partial" | "processing" | "unavailable" | "not_configured" | "not_applicable";
 export type DiagnosticConfiguration = "configured" | "default" | "not_configured";
 
 export interface DiagnosticCheck {
@@ -25,6 +25,7 @@ export interface DiagnosticProvider {
   liveChecks: number;
   partialChecks: number;
   blockedChecks: number;
+  notApplicableChecks: number;
 }
 
 export interface CompletenessSnapshot {
@@ -42,13 +43,13 @@ export interface CompletenessSnapshot {
     live: number;
     partial: number;
     blocked: number;
+    notApplicable: number;
     totalRecords: number;
   };
   providers: DiagnosticProvider[];
   checks: DiagnosticCheck[];
 }
 
-const CURRENT_GRID_SIZE = 22;
 const DEFAULT_RSS_FEEDS = "https://www.motorsport.com/rss/f1/news/,https://www.autosport.com/rss/f1/news/";
 let snapshotCache: { expiresAt: number; value: CompletenessSnapshot } | undefined;
 let snapshotInFlight: Promise<CompletenessSnapshot> | undefined;
@@ -71,6 +72,7 @@ function safeEndpoint(value: string) {
 }
 
 function categoryStatus(category: DataCategory, expected?: number): DiagnosticStatus {
+  if (category.status === "not_applicable") return "not_applicable";
   if (category.status === "worker") return "processing";
   if (category.status === "awaiting_data") return "processing";
   if (!category.status || category.count === 0) return "unavailable";
@@ -79,6 +81,7 @@ function categoryStatus(category: DataCategory, expected?: number): DiagnosticSt
 }
 
 function categoryReason(category: DataCategory, status: DiagnosticStatus, expected?: number) {
+  if (status === "not_applicable") return "OpenF1 overtakes are only available for Race sessions; this snapshot is not a Race.";
   if (category.status === "worker") return "Worker artifact is not published to the application data layer yet.";
   if (category.status === "awaiting_data") return "OpenF1 publishes session data after the session; the worker will retry and keep the latest published snapshot.";
   if (status === "unavailable") return category.status === "unavailable" ? "Provider request failed or returned no usable records." : "Provider returned an empty dataset.";
@@ -89,7 +92,9 @@ function categoryReason(category: DataCategory, status: DiagnosticStatus, expect
 }
 
 function expectedRecords(categoryId: string) {
-  if (categoryId === "drivers" || categoryId === "driver-standings") return CURRENT_GRID_SIZE;
+  // Provider truth can differ from the active race grid (for example, a season
+  // standings feed may include a replacement driver). Do not invent a fixed 22.
+  void categoryId;
   return undefined;
 }
 
@@ -190,6 +195,7 @@ async function collectCompletenessSnapshot(): Promise<CompletenessSnapshot> {
       liveChecks: providerChecks.filter((check) => check.status === "live").length,
       partialChecks: providerChecks.filter((check) => check.status === "partial").length,
       blockedChecks: providerChecks.filter((check) => ["unavailable", "processing", "not_configured"].includes(check.status)).length,
+      notApplicableChecks: providerChecks.filter((check) => check.status === "not_applicable").length,
     };
   });
   return {
@@ -202,6 +208,7 @@ async function collectCompletenessSnapshot(): Promise<CompletenessSnapshot> {
       live: statusCounts("live"),
       partial: statusCounts("partial"),
       blocked: allChecks.filter((check) => ["unavailable", "processing", "not_configured"].includes(check.status)).length,
+      notApplicable: statusCounts("not_applicable"),
       totalRecords: checks.reduce((total, check) => total + check.records, 0),
     },
     providers,

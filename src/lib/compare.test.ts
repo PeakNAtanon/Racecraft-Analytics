@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { latestFastF1Session, selectDriverPair } from "./compare";
+import type { FastF1ArtifactInventoryItem } from "./fastf1-artifacts";
 import type { ComparisonSession } from "./types";
 
 function session(overrides: Partial<ComparisonSession>): ComparisonSession {
@@ -15,13 +16,17 @@ function session(overrides: Partial<ComparisonSession>): ComparisonSession {
   };
 }
 
+function artifact(overrides: Partial<FastF1ArtifactInventoryItem>): FastF1ArtifactInventoryItem {
+  return { season: 2026, round: 1, sessionCode: "R", status: "complete", path: "/data/session.json", parquetFiles: 20, ...overrides };
+}
+
 describe("Compare FastF1 session selection", () => {
-  it("selects the latest completed session with a valid round", () => {
+  it("selects the latest session with a published FastF1 artifact", () => {
     const selected = latestFastF1Session([
       session({ sessionKey: 10, round: 1, startsAt: "2026-03-01T12:00:00Z" }),
       session({ sessionKey: 20, round: 2, sessionCode: "Q", startsAt: "2026-03-08T12:00:00Z" }),
       session({ sessionKey: 30, round: 0, startsAt: "2026-03-15T12:00:00Z" }),
-    ]);
+    ], [artifact({ round: 1, sessionCode: "R" }), artifact({ round: 2, sessionCode: "Q" })]);
 
     expect(selected?.sessionKey).toBe(20);
     expect(selected?.round).toBe(2);
@@ -29,7 +34,12 @@ describe("Compare FastF1 session selection", () => {
   });
 
   it("returns undefined when no session can map to a FastF1 artifact", () => {
-    expect(latestFastF1Session([session({ round: 0 })])).toBeUndefined();
+    expect(latestFastF1Session([session({ round: 1 })], [])).toBeUndefined();
+  });
+
+  it("maps the public Sprint code to FastF1's S directory", () => {
+    const selected = latestFastF1Session([session({ sessionKey: 12, round: 3, sessionCode: "SPR" })], [artifact({ round: 3, sessionCode: "S" })]);
+    expect(selected?.sessionKey).toBe(12);
   });
 });
 
