@@ -10,6 +10,7 @@ import { driverHistorySeeds } from "./driver-history";
 import { circuitHistorySeed } from "./circuit-history";
 import { durationLabel, gapLabel } from "./session-result-format";
 import { finiteNumber } from "./number-utils";
+import { redisCacheGet, redisCacheKey, redisCacheSet } from "./redis-cache";
 
 type JsonRecord = Record<string, unknown>;
 type ApiState = "live" | "unavailable" | "awaiting_data" | "worker" | "not_applicable";
@@ -91,6 +92,12 @@ async function fetchJson(url: string): Promise<FetchResult> {
   if (cached && cached.expiresAt > Date.now()) return cached.result;
   const active = providerInFlight.get(url);
   if (active) return active;
+  const redisKey = redisCacheKey("provider", url);
+  const distributed = await redisCacheGet<FetchResult>(redisKey);
+  if (distributed) {
+    providerCache.set(url, { expiresAt: Date.now() + 600_000, result: distributed });
+    return distributed;
+  }
 
   const request = queueProviderRequest(url, async () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -103,6 +110,7 @@ async function fetchJson(url: string): Promise<FetchResult> {
         if (response.ok) {
           const result = { ok: true, data: await response.json() };
           providerCache.set(url, { expiresAt: Date.now() + 600000, result });
+          void redisCacheSet(redisKey, result, 600);
           return result;
         }
         const retryable = response.status === 429 || response.status >= 500;
@@ -892,8 +900,15 @@ export async function getDataHub(timezone = "Asia/Bangkok", locale: Locale = "en
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   const active = dataHubInFlight.get(cacheKey);
   if (active) return active;
+  const redisKey = redisCacheKey("data-hub", cacheKey);
+  const distributed = await redisCacheGet<DataHubSnapshot>(redisKey);
+  if (distributed) {
+    dataHubCache.set(cacheKey, { expiresAt: Date.now() + 600_000, value: distributed });
+    return distributed;
+  }
   const request = loadDataHub(timezone, locale).then(value => {
     dataHubCache.set(cacheKey, { expiresAt: Date.now() + 600_000, value });
+    void redisCacheSet(redisKey, value, 600);
     return value;
   }).finally(() => {
     if (dataHubInFlight.get(cacheKey) === request) dataHubInFlight.delete(cacheKey);

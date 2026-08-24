@@ -98,3 +98,9 @@ docker compose --env-file .env.docker ps
 ```
 
 Check logs with `docker compose logs --tail=100 traefik nginx web worker`. Back up the `postgres_data` volume and telemetry volume before changing database migrations or removing volumes.
+
+## Redis cache
+
+The Compose stack includes Redis as a disposable L2 cache. It is capped at 128 MB (Redis `maxmemory` 96 MB), uses `allkeys-lru`, and has no volume because cached data can be rebuilt. Set `REDIS_URL=redis://redis:6379` in `.env.docker`; the web service waits for Redis health before starting. If Redis is unavailable later, the web layer falls back to its in-process cache.
+
+The cache covers provider responses, schedule, RSS news and DataHub snapshots for 10 minutes. Redis is internal-only and is not published to the host.

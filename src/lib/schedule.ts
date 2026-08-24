@@ -1,6 +1,7 @@
 import { rounds as fallbackRounds } from "./data";
 import { DataStatus, Round, SessionCode, SessionInfo } from "./types";
 import { canonicalSessionCode } from "./session-code";
+import { redisCacheGet, redisCacheKey, redisCacheSet } from "./redis-cache";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -161,8 +162,15 @@ export async function getScheduleRounds(season = Number(process.env.F1_SEASON ??
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   const active = scheduleInFlight.get(cacheKey);
   if (active) return active;
+  const redisKey = redisCacheKey("schedule", cacheKey);
+  const distributed = await redisCacheGet<Round[]>(redisKey);
+  if (distributed) {
+    scheduleCache.set(cacheKey, { expiresAt: Date.now() + 600_000, value: distributed });
+    return distributed;
+  }
   const request = loadScheduleRounds(season).then(value => {
     scheduleCache.set(cacheKey, { expiresAt: Date.now() + 600_000, value });
+    void redisCacheSet(redisKey, value, 600);
     return value;
   }).finally(() => {
     if (scheduleInFlight.get(cacheKey) === request) scheduleInFlight.delete(cacheKey);

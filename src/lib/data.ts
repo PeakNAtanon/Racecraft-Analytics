@@ -1,6 +1,7 @@
 import { Round, Standing, NewsItem, NewsProvider } from "./types";
 import { circuitPaths } from "./circuit-paths";
 import { referenceCircuitPaths } from "./circuit-reference-paths";
+import { redisCacheGet, redisCacheKey, redisCacheSet } from "./redis-cache";
 
 const circuits = [
   ["albert-park", "Albert Park", "Melbourne", "Australia", 5.278, 14],
@@ -233,8 +234,15 @@ export async function getNews(): Promise<NewsItem[]> {
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   const active = newsInFlight.get(cacheKey);
   if (active) return active;
+  const redisKey = redisCacheKey("news", cacheKey);
+  const distributed = await redisCacheGet<NewsItem[]>(redisKey);
+  if (distributed) {
+    newsCache.set(cacheKey, { expiresAt: Date.now() + 600_000, value: distributed });
+    return distributed;
+  }
   const request = loadNews(feeds).then(value => {
     newsCache.set(cacheKey, { expiresAt: Date.now() + 600_000, value });
+    void redisCacheSet(redisKey, value, 600);
     return value;
   }).finally(() => {
     if (newsInFlight.get(cacheKey) === request) newsInFlight.delete(cacheKey);

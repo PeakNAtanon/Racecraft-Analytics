@@ -80,3 +80,9 @@ npm run build
 - Provider failure ห้ามลบข้อมูลที่เคยเผยแพร่ และค่า `Complete` ต้องผ่าน cross-provider validation
 
 โปรดอ่าน `RISK_ACCEPTANCE.md` และตรวจ commercial terms ของทุก provider/feed ก่อนเปิด AdSense
+
+## Redis cache
+
+Docker Compose starts Redis as a disposable L2 cache with a 96 MB limit and `allkeys-lru`; it has no persistent volume. The web layer caches provider responses, schedule, RSS news and DataHub snapshots for 10 minutes to reduce repeated API requests across containers. If Redis is unavailable, the application falls back to the in-process cache.
+
+Set `REDIS_URL=redis://redis:6379` in `.env.docker`. Local development may leave `REDIS_URL` empty.
