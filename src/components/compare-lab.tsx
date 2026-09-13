@@ -17,7 +17,7 @@ function initialVsSelection(drivers: Standing[], pace: PaceChartData, requestedC
   return selectDriverPair(drivers.map(driver => driver.code), pace.defaultCodes ?? [], requestedCodes);
 }
 
-export function CompareLab({ drivers, pace, comparison, referenceComparison, stints, telemetryByDriver, locale, filters, initialDriverCodes = [] }: { drivers: Standing[]; pace: PaceChartData; comparison: SeasonComparisonSnapshot; referenceComparison?: SeasonComparisonSnapshot; stints: StintSnapshot[]; telemetryByDriver?: Record<string, DriverTelemetrySnapshot>; locale: Locale; filters: ComparisonFilters; initialDriverCodes?: string[] }) {
+export function CompareLab({ drivers, pace, comparison, referenceComparison, availableSeasons, stints, telemetryByDriver, locale, filters, initialDriverCodes = [] }: { drivers: Standing[]; pace: PaceChartData; comparison: SeasonComparisonSnapshot; referenceComparison?: SeasonComparisonSnapshot; availableSeasons: number[]; stints: StintSnapshot[]; telemetryByDriver?: Record<string, DriverTelemetrySnapshot>; locale: Locale; filters: ComparisonFilters; initialDriverCodes?: string[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [visibleDrivers, setVisibleDrivers] = useState(() => drivers.map(driver => driver.code));
@@ -69,8 +69,8 @@ export function CompareLab({ drivers, pace, comparison, referenceComparison, sti
       <form className="season-compare-controls" method="get" aria-label={locale === "th" ? "เลือกฤดูกาล" : "Choose seasons"}>
         <input type="hidden" name="drivers" value={vsDrivers.join(",")} />
         {Object.entries(filters).map(([name, value]) => <input key={name} type="hidden" name={name} defaultValue={value} />)}
-        <label>{locale === "th" ? "ฤดูกาลหลัก" : "Primary season"}<select className="select" name="season" defaultValue={comparison.season} onChange={event => { for (const name of ["round", "circuit", "session"]) { const control = event.currentTarget.form?.elements.namedItem(name); if (control instanceof HTMLInputElement) control.value = "ALL"; } }}>{[2026, 2025, 2024, 2023].map(year => <option key={year} value={year}>{year}</option>)}</select></label>
-        <label>{locale === "th" ? "เทียบกับฤดูกาล" : "Compare with season"}<select className="select" name="compareSeason" defaultValue={referenceComparison?.season ?? ""}><option value="">{locale === "th" ? "ไม่เปรียบเทียบ" : "Single season"}</option>{[2026, 2025, 2024, 2023].map(year => <option key={year} value={year}>{year}</option>)}</select></label>
+        <label>{locale === "th" ? "ฤดูกาลหลัก" : "Primary season"}<select className="select" name="season" defaultValue={comparison.season} onChange={event => { for (const name of ["round", "circuit", "session"]) { const control = event.currentTarget.form?.elements.namedItem(name); if (control instanceof HTMLInputElement) control.value = "ALL"; } }}>{availableSeasons.map(year => <option key={year} value={year}>{year}</option>)}</select></label>
+        <label>{locale === "th" ? "เทียบกับฤดูกาล" : "Compare with season"}<select className="select" name="compareSeason" defaultValue={referenceComparison?.season ?? ""}><option value="">{locale === "th" ? "ไม่เปรียบเทียบ" : "Single season"}</option>{availableSeasons.map(year => <option key={year} value={year}>{year}</option>)}</select></label>
         <button className="button" type="submit">{locale === "th" ? "แสดงข้อมูล" : "Show seasons"}</button>
       </form>
       <details className="analysis-guide"><summary>{text(locale, "Guide")} · FastF1</summary><p>{text(locale, "Clean-lap pace excludes pit laps, deleted laps and laps that fail accuracy or track-status checks.")}</p><p>{text(locale, "Consistency measures lap-time variation; lower means more consistent. Theoretical best sums the best validated sectors, not an actual completed lap.")}</p></details>

@@ -5,6 +5,7 @@ import { getSeasonComparison, getSeasonStandings } from "@/lib/data-api";
 import { getLocale } from "@/lib/i18n-server";
 import { message } from "@/lib/i18n";
 import { getTeamColor, getTeamMark } from "@/lib/team-colors";
+import { getWebSeasons, resolveWebSeason } from "@/lib/web-seasons";
 
 export const revalidate = 600;
 
@@ -27,7 +28,8 @@ function latestForm(code: string, sessions: Awaited<ReturnType<typeof getSeasonC
 export default async function Drivers({ searchParams }: { searchParams?: Promise<{ season?: string | string[]; q?: string | string[]; team?: string | string[]; sort?: string | string[] }> }) {
   const query = await searchParams;
   const seasonValue = firstQueryValue(query?.season);
-  const season = Number.isInteger(Number(seasonValue)) && Number(seasonValue) > 0 ? Number(seasonValue) : Number(process.env.F1_SEASON ?? "2026");
+  const availableSeasons = getWebSeasons();
+  const season = resolveWebSeason(seasonValue);
   const [snapshot, comparison, locale] = await Promise.all([getSeasonStandings(season), getSeasonComparison(season), getLocale()]);
 
   const snapshotSource = snapshot.source === "Jolpica" ? snapshot.complete ? "JOLPICA API" : "JOLPICA API · PARTIAL" : "CACHED FALLBACK";
@@ -37,8 +39,6 @@ export default async function Drivers({ searchParams }: { searchParams?: Promise
   const requestedSort = firstQueryValue(query?.sort) as DriverDirectorySort;
   const sort: DriverDirectorySort = ["championship", "points", "wins", "team"].includes(requestedSort) ? requestedSort : "championship";
   const teams = Array.from(new Set(snapshot.standings.map((driver) => driver.team).filter(Boolean))).sort((left, right) => left.localeCompare(right));
-  const latestSeason = Number(process.env.F1_SEASON ?? "2026");
-  const availableSeasons = Array.from({ length: Math.max(latestSeason - 1950 + 1, 1) }, (_, index) => latestSeason - index);
   const seatCount = teams.length * 2;
   const normalizedSearch = search.toLocaleLowerCase();
   const visibleDrivers = snapshot.standings.filter((driver) => {

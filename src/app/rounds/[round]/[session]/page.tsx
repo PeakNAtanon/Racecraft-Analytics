@@ -10,11 +10,14 @@ import { SessionResults } from "@/components/session-results";
 import { getLocale } from "@/lib/i18n-server";
 import { getTimezone, getTimezoneMode } from "@/lib/timezone-server";
 import { displayTimezone } from "@/lib/timezone";
+import { isWebSeasonVisible, resolveWebSeason } from "@/lib/web-seasons";
 
 export default async function SessionPage({ params, searchParams }: { params: Promise<{ round: string; session: string }>; searchParams?: Promise<{ season?: string }> }) {
   const pageParams = await params;
   const query = await searchParams;
-  const season = ["2023", "2024", "2025"].includes(query?.season ?? "") ? Number(query?.season) : 2026;
+  const requestedSeason = Number(query?.season);
+  if (query?.season && Number.isInteger(requestedSeason) && !isWebSeasonVisible(requestedSeason)) notFound();
+  const season = resolveWebSeason(query?.season);
   const round = await getScheduleRound(pageParams.round, season);
   const session = round?.sessions.find(item => item.code.toLowerCase() === pageParams.session.toLowerCase());
   if (!round || !session) notFound();

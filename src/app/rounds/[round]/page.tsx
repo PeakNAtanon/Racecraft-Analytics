@@ -6,12 +6,15 @@ import { AdSlot, MetricGrid, StatusBadge, TrackMap } from "@/components/shared";
 import { SessionSchedule } from "@/components/session-schedule";
 import { PaceChart } from "@/components/pace-chart";
 import { getLocale } from "@/lib/i18n-server";
+import { isWebSeasonVisible, resolveWebSeason } from "@/lib/web-seasons";
 
 export default async function RoundPage({ params, searchParams }: { params: Promise<{ round: string }>; searchParams?: Promise<{ season?: string }> }) {
   const { round: value } = await params;
   const locale = await getLocale();
   const query = await searchParams;
-  const round = await getScheduleRound(value, ["2023", "2024", "2025"].includes(query?.season ?? "") ? Number(query?.season) : 2026);
+  const requestedSeason = Number(query?.season);
+  if (query?.season && Number.isInteger(requestedSeason) && !isWebSeasonVisible(requestedSeason)) notFound();
+  const round = await getScheduleRound(value, resolveWebSeason(query?.season));
   if (!round) notFound();
   const raceSession = round.sessions.find(session => session.code === "R") ?? round.sessions.at(-1);
   const analytics = await getSessionAnalytics({ sessionKey: raceSession?.sessionKey, season: round.season, round: round.round, sessionCode: raceSession?.code, sessionName: raceSession?.name, fastF1Only: true });
