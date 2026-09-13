@@ -8,7 +8,7 @@ export interface Standing { position: number; code: string; name: string; team: 
 export interface DriverProfile extends Standing { driverId?: string; driverNumber?: number; nationality?: string; dateOfBirth?: string; profileUrl?: string; firstF1Season?: number }
 export interface Metric { id: string; label: string; value: string; note: string; tone?: "red" | "cyan" | "amber" | "green" }
 export interface PaceSeries { code: string; name: string; values: Array<number | null>; color?: string }
-export interface PaceChartData { sessionLabel: string; source: "FastF1" | "OpenF1" | "fallback"; laps: number[]; series: PaceSeries[]; defaultCodes?: string[] }
+export interface PaceChartData { sessionLabel: string; source: "FastF1" | "OpenF1" | "fallback"; laps: number[]; series: PaceSeries[]; defaultCodes?: string[]; updatedAt?: string; dataState?: "scheduled" | "processing" | "partial" | "unavailable" | "ready"; availableSessionHref?: string }
 export interface StintSnapshot { driverNumber: number; code: string; name: string; team: string; color?: string; stint: number; compound: string; startLap: number; endLap: number; lapCount: number; medianLap?: number; degradationPerLap?: number }
 export type SessionResultStatus = "CLASSIFIED" | "DNF" | "DNS" | "DSQ";
 export interface SessionResult { position?: number; driverNumber: number; code: string; name: string; team: string; status: SessionResultStatus; time: string; gap: string; laps?: number; grid?: number; points?: number; color?: string }
@@ -23,7 +23,7 @@ export interface SeasonComparisonSnapshot { season: number; source: "Jolpica" | 
 export interface DriverAnalysisSession { sessionKey: number; round: number; circuit: string; sessionCode: SessionCode; sessionName: string; startsAt: string; status: "complete" | "provisional" | "unavailable"; position?: number; grid?: number; points?: number; laps?: number; validLaps?: number; resultStatus?: SessionResultStatus; source: "OpenF1" | "Jolpica" | "fallback" }
 export interface DriverAnalysisSummary { averageFinish?: number; bestFinish?: number; validSessions: number; validLaps: number; classified: number; dnf: number; dns: number; dsq: number; positionsGained?: number }
 export interface DriverRacecraftSnapshot { overtakesMade?: number; overtakesLost?: number; raceControlEvents?: number; positionSamples?: number; positionsGained?: number; source: "FastF1" | "OpenF1" | "fallback" }
-export interface DriverTelemetryPoint { timestamp?: string; speed?: number; throttle?: number; brake?: number; gear?: number }
+export interface DriverTelemetryPoint { timestamp?: string; distance?: number; speed?: number; throttle?: number; brake?: number; gear?: number }
 export interface DriverTelemetrySnapshot { available: boolean; sampleCount: number; fields: string[]; samples: DriverTelemetryPoint[]; source: "OpenF1" | "FastF1" | "fallback" }
 export interface DriverAnalysisSnapshot { season: number; driver: DriverProfile; source: "FastF1" | "OpenF1" | "Jolpica" | "fallback"; status: DataStatus; sessions: DriverAnalysisSession[]; summary: DriverAnalysisSummary; selectedSession?: DriverAnalysisSession; selectedAnalytics?: SessionAnalyticsSnapshot; racecraft?: DriverRacecraftSnapshot; telemetry?: DriverTelemetrySnapshot; teammate?: Standing }
 export type NewsProvider = "Autosport" | "Motorsport.com" | "Other";

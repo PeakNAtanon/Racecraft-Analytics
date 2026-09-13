@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from racecraft_ingest.fastf1_adapter import FastF1Adapter
 
@@ -9,6 +10,28 @@ class FakeFrame:
 
     def to_dict(self, _orient):
         return self.rows
+
+
+@pytest.mark.parametrize("invalid", [{"IsAccurate": False}, {"Deleted": True}, {"TrackStatus": "4"}, {"PitInTime": "00:01:00"}, {"PitOutTime": "00:01:00"}])
+def test_telemetry_and_sectors_use_the_same_validated_laps(tmp_path, monkeypatch, invalid):
+    import pandas as pd
+    from fastf1.core import Lap, Laps
+
+    rows = [dict(Driver="VER", DriverNumber="1", LapNumber=i,
+                 LapTime=pd.Timedelta(f"{time}s"),
+                 Sector1Time=pd.Timedelta(f"{sector}s"), Sector2Time=pd.Timedelta(f"{sector}s"), Sector3Time=pd.Timedelta(f"{sector}s"),
+                 TrackStatus="1", IsAccurate=accurate, IsPersonalBest=not accurate,
+                 Deleted=False, PitInTime=pd.NaT, PitOutTime=pd.NaT, Stint=1, Compound="SOFT")
+            for i, time, sector, accurate in [(1, 90, 30, True), (2, 60, 20, False)]]
+    rows[1].update({"IsAccurate": True, **invalid})
+    monkeypatch.setattr(Lap, "get_telemetry", lambda lap: pd.DataFrame([{
+        "Date": pd.Timestamp("2026-01-01"), "Speed": 100 * int(lap["LapNumber"]), "Throttle": 50, "Brake": False, "nGear": 4,
+    }]))
+    session = type("Session", (), {"laps": Laps(pd.DataFrame(rows)), "name": "Race"})()
+    artifact = FastF1Adapter(str(tmp_path)).export_session_artifact(session, str(tmp_path / "session.json"), 2026, 1, "R")
+    assert artifact["metrics"][0]["bestLap"] == 90
+    assert artifact["metrics"][0]["theoreticalBest"] == 90
+    assert artifact["telemetryByDriver"]["VER"]["samples"][0]["speed"] == 100
 
 
 def test_export_session_artifact_contains_fastf1_metrics(tmp_path):
@@ -23,7 +46,7 @@ def test_export_session_artifact_contains_fastf1_metrics(tmp_path):
     artifact = FastF1Adapter(str(tmp_path / "cache")).export_session_artifact(session, str(destination), 2026, 1, "R")
 
     assert artifact["provider"] == "FastF1"
-    assert artifact["schemaVersion"] == "fastf1-session-v4"
+    assert artifact["schemaVersion"] == "fastf1-session-v6"
     assert artifact["metrics"][0]["validLaps"] == 2
     assert artifact["dataQuality"]["validLaps"] == 2
     assert artifact["weather"]["latest"]["trackTemperature"] == 31.0
@@ -68,3 +91,38 @@ def test_export_session_artifact_reports_driver_data_gaps(tmp_path):
     assert availability["HAM"]["status"] == "no_valid_laps"
     assert availability["RUS"]["status"] == "no_laps"
     assert artifact["dataQuality"]["driversSeen"] == 3
+
+
+@pytest.mark.parametrize("distances", [[-0.2, 14.25, 130.5], [None, float("nan"), float("inf")]])
+def test_telemetry_preserves_only_provider_distance(tmp_path, monkeypatch, distances):
+    import pandas as pd
+    from types import SimpleNamespace
+    from racecraft_ingest import fastf1_adapter
+
+    frame = pd.DataFrame({
+        "Date": pd.date_range("2024-05-05", periods=3, freq="1s"),
+        "Speed": [100, 110, 120], "Distance": distances,
+    })
+    monkeypatch.setattr(fastf1_adapter, "_validated_fastest", lambda *args: SimpleNamespace(get_telemetry=lambda: frame))
+    trace = fastf1_adapter._telemetry_snapshot(object(), "VER", tmp_path)
+    assert trace is not None
+    if distances[0] is not None:
+        assert [sample["distance"] for sample in trace["samples"]] == distances
+        assert "distance" in trace["fields"]
+    else:
+        assert all("distance" not in sample for sample in trace["samples"])
+        assert "distance" not in trace["fields"]
+    assert trace["samples"][0]["speed"] == 100
+    assert pd.read_parquet(trace["parquetPath"]).shape[0] == 3
+
+
+def test_telemetry_without_distance_does_not_integrate_speed(tmp_path, monkeypatch):
+    import pandas as pd
+    from types import SimpleNamespace
+    from racecraft_ingest import fastf1_adapter
+
+    frame = pd.DataFrame({"Date": pd.date_range("2024-05-05", periods=2, freq="1s"), "Speed": [100, 120]})
+    monkeypatch.setattr(fastf1_adapter, "_validated_fastest", lambda *args: SimpleNamespace(get_telemetry=lambda: frame))
+    trace = fastf1_adapter._telemetry_snapshot(object(), "VER", tmp_path)
+    assert trace["fields"] == ["speed"]
+    assert all("distance" not in sample for sample in trace["samples"])

@@ -1,4 +1,11 @@
-import type { DriverAnalysisSession, DriverAnalysisSummary } from "./types";
+import type { DriverAnalysisSession, DriverAnalysisSummary, PaceSeries } from "./types";
+
+export function selectDriverPaceSeries(series: PaceSeries[], driverCode: string, teammateCode?: string): PaceSeries[] {
+  const selected = series.filter(item => item.code.toUpperCase() === driverCode.toUpperCase());
+  const others = series.filter(item => item.code.toUpperCase() !== driverCode.toUpperCase()
+    && (!teammateCode || item.code.toUpperCase() === teammateCode.toUpperCase()));
+  return [...selected, ...others].slice(0, teammateCode ? 2 : 4);
+}
 
 export function calculateDriverSummary(sessions: DriverAnalysisSession[]): DriverAnalysisSummary {
   const raceSessions = sessions.filter((session) => session.sessionCode === "R" || session.sessionCode === "SPR");

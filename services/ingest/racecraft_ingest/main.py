@@ -3,12 +3,16 @@ import argparse, asyncio, json
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from time import monotonic
 from typing import Any
 from .config import Settings
 from .fastf1_adapter import FASTF1_ARTIFACT_SCHEMA_VERSION, FastF1Adapter
 from .providers import JolpicaProvider, OpenF1Provider, canonical_session_code
 from .rss import fetch_feed
 from .repository import Repository
+
+_fastf1_retry_after: dict[str, float] = {}
+FASTF1_RETRY_DELAY_SECONDS = 1200
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -54,6 +58,8 @@ def _run_fastf1(settings: Settings, calendar: dict[str, Any] | None, sessions: l
 
     Processing one artifact at a time keeps the cache and CPU bounded. The
     next ten-minute cycle continues the backlog without duplicating files.
+    Failed sessions rest for twenty minutes so the next cycle can attempt
+    older work. Retry deadlines are local to this worker process.
     """
     if not settings.fastf1_enabled:
         return {"state": "disabled", "processed": 0, "pending": 0}
@@ -72,19 +78,29 @@ def _run_fastf1(settings: Settings, calendar: dict[str, Any] | None, sessions: l
     # receives a FastF1 artifact promptly; older sessions remain queued.
     candidates.sort(key=lambda item: (item[1], item[0]), reverse=True)
     adapter = FastF1Adapter(settings.fastf1_cache)
-    pending = 0
+    missing = []
     for _, round_number, code, _ in candidates:
         destination = adapter.artifact_path(settings.telemetry_storage, settings.season, round_number, _fastf1_session_code(code))
         if destination.exists() and destination.stat().st_size > 0 and _artifact_is_current(destination):
+            _fastf1_retry_after.pop(str(destination), None)
             continue
-        pending += 1
+        missing.append((round_number, code, destination))
+    pending = len(missing)
+    # Untouched backlog goes before retries, even when an earlier retry is due.
+    # Otherwise two failing sessions can alternate and starve all older work.
+    missing.sort(key=lambda item: _fastf1_retry_after.get(str(item[2]), 0))
+    for round_number, code, destination in missing:
+        if _fastf1_retry_after.get(str(destination), 0) > monotonic():
+            continue
         try:
             session = adapter.load(settings.season, round_number, _fastf1_session_code(code))
             artifact = adapter.export_session_artifact(session, str(destination), settings.season, round_number, code)
+            _fastf1_retry_after.pop(str(destination), None)
             return {"state": "complete", "processed": 1, "pending": max(0, pending - 1), "round": round_number, "session_code": code, "artifact": str(destination), "drivers": len(artifact.get("metrics", []))}
         except Exception as exc:  # provider/library errors must not erase prior snapshots
+            _fastf1_retry_after[str(destination)] = monotonic() + FASTF1_RETRY_DELAY_SECONDS
             return {"state": "telemetry_processing", "processed": 0, "pending": pending, "round": round_number, "session_code": code, "error": f"{type(exc).__name__}: {exc}"}
-    return {"state": "complete" if candidates else "awaiting_data", "processed": 0, "pending": pending}
+    return {"state": "telemetry_processing" if pending else "complete" if candidates else "awaiting_data", "processed": 0, "pending": pending}
 
 async def run_once(settings: Settings) -> dict:
     jolpica = JolpicaProvider(settings.jolpica_url, settings.user_agent)

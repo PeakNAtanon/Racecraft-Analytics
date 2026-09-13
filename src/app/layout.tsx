@@ -9,6 +9,9 @@ import "flag-icons/css/flag-icons.min.css";
 import "./tailwind.css";
 import "./globals.css";
 import "./motion.css";
+import "./analysis-ux.css";
+import "@fontsource/noto-sans-thai/400.css";
+import "@fontsource/noto-sans-thai/600.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 const siteTitle = "Racecraft Analytics";

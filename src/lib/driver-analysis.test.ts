@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { calculateDriverSummary } from "./driver-analysis";
+import { calculateDriverSummary, selectDriverPaceSeries } from "./driver-analysis";
 import type { DriverAnalysisSession } from "./types";
+
+describe("driver pace selection", () => {
+  const series = ["ALB", "ALO", "ANT", "BEA", "VER", "HAM"].map(code => ({ code, name: code, values: [90] }));
+  it("keeps the selected driver before limiting the field to four", () => {
+    expect(selectDriverPaceSeries(series, "VER").map(item => item.code)).toEqual(["VER", "ALB", "ALO", "ANT"]);
+  });
+  it("selects only the driver and teammate, regardless of source ordering", () => {
+    expect(selectDriverPaceSeries(series, "ver", "ham").map(item => item.code)).toEqual(["VER", "HAM"]);
+  });
+});
 
 const session = (values: Partial<DriverAnalysisSession>): DriverAnalysisSession => ({
   sessionKey: 1,

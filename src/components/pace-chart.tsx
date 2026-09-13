@@ -4,6 +4,9 @@ import ReactECharts from "echarts-for-react";
 import { formatChartNumber, formatLapTooltipValue } from "@/lib/chart-format";
 import { buildValueGapBridges } from "@/lib/position-series";
 import type { PaceChartData, PaceSeries } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
+import { analysisText as text } from "@/lib/analysis-copy";
+import { AnalysisDataState } from "@/components/analysis-data-state";
 
 const theme = {
   background: "#0a0c0f",
@@ -42,10 +45,10 @@ function validValues(series: PaceSeries) {
   return series.values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 }
 
-export function PaceChart({ data }: { data: PaceChartData }) {
+export function PaceChart({ data, locale = "en" }: { data: PaceChartData; locale?: Locale }) {
   const selectedSeries = selectSeries(data);
-  if (!selectedSeries.length || !data.laps.length) {
-    return <div className="empty">ยังไม่มีข้อมูล lap ที่ผ่าน validation สำหรับ session นี้</div>;
+  if (!selectedSeries.length || !data.laps.length || !selectedSeries.some(series => validValues(series).length)) {
+    return <AnalysisDataState state={data.dataState ?? (data.source === "FastF1" ? "partial" : "processing")} locale={locale} updatedAt={data.updatedAt} availableSessionHref={data.availableSessionHref} />;
   }
 
   // Keep every series aligned to the lap axis. Older artifacts and provider
@@ -65,7 +68,7 @@ export function PaceChart({ data }: { data: PaceChartData }) {
   const fastestSeriesIndex = fastest === null ? -1 : valueGroups.findIndex(values => values.includes(fastest));
   const fastestSeries = fastestSeriesIndex >= 0 ? seriesData[fastestSeriesIndex] : undefined;
   const fastestLapIndex = fastestSeriesIndex >= 0 && fastest !== null ? seriesData[fastestSeriesIndex].values.findIndex(value => value === fastest) : -1;
-  const fastestLapLabel = fastestLapIndex >= 0 ? `LAP ${data.laps[fastestLapIndex]}` : "Validated data";
+  const fastestLapLabel = fastestLapIndex >= 0 ? `LAP ${data.laps[fastestLapIndex]}` : text(locale, "Validated data");
   const gapSeries = seriesData.flatMap((series, index) => buildValueGapBridges(series.values).map((values, gapIndex) => ({
     name: `${series.code} gap ${gapIndex + 1}`,
     type: "line",
@@ -94,8 +97,8 @@ export function PaceChart({ data }: { data: PaceChartData }) {
       borderColor: `${theme.cyan}66`,
       borderWidth: 1,
       extraCssText: "box-shadow: 0 12px 32px rgba(0,0,0,.36); border-radius: 8px;",
-      textStyle: { color: theme.text, fontFamily: "JetBrains Mono, monospace", fontSize: 11 },
-      axisPointer: { type: "cross", lineStyle: { color: "#ffffff55", width: 1 }, crossStyle: { color: "#ffffff55" }, label: { backgroundColor: theme.cyan, color: theme.background, fontFamily: "JetBrains Mono, monospace" } },
+      textStyle: { color: theme.text, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace", fontSize: 11 },
+      axisPointer: { type: "cross", lineStyle: { color: "#ffffff55", width: 1 }, crossStyle: { color: "#ffffff55" }, label: { backgroundColor: theme.cyan, color: theme.background, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace" } },
       valueFormatter: (value: unknown) => formatLapTooltipValue(value),
     },
     legend: {
@@ -110,32 +113,32 @@ export function PaceChart({ data }: { data: PaceChartData }) {
       itemGap: 18,
       pageButtonItemGap: 6,
       pageIconColor: theme.cyan,
-      pageTextStyle: { color: theme.muted, fontFamily: "JetBrains Mono, monospace", fontSize: 10 },
-      textStyle: { color: theme.muted, fontSize: 11, fontFamily: "JetBrains Mono, monospace" },
+      pageTextStyle: { color: theme.muted, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace", fontSize: 10 },
+      textStyle: { color: theme.muted, fontSize: 11, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace" },
       data: seriesData.map(series => series.code),
     },
     grid: { left: 54, right: 24, top: 56, bottom: 46, containLabel: true },
     xAxis: {
       type: "category",
-      name: "LAP",
+      name: text(locale, "LAP"),
       nameLocation: "middle",
       nameGap: 28,
       data: data.laps,
       boundaryGap: false,
       axisTick: { show: false },
-      axisLabel: { color: theme.muted, fontSize: 11, fontFamily: "JetBrains Mono, monospace", hideOverlap: true, margin: 12 },
+      axisLabel: { color: theme.muted, fontSize: 11, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace", hideOverlap: true, margin: 12 },
       axisLine: { lineStyle: { color: theme.line } },
       splitLine: { show: false },
     },
     yAxis: {
       type: "value",
-      name: "LAP TIME · SEC",
+      name: text(locale, "LAP TIME · SEC"),
       nameGap: 38,
-      nameTextStyle: { color: theme.muted, fontSize: 10, fontFamily: "JetBrains Mono, monospace" },
+      nameTextStyle: { color: theme.muted, fontSize: 10, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace" },
       min: yMin,
       max: yMax,
       inverse: true,
-      axisLabel: { color: theme.muted, fontSize: 11, fontFamily: "JetBrains Mono, monospace", formatter: (value: unknown) => formatChartNumber(value) },
+      axisLabel: { color: theme.muted, fontSize: 11, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace", formatter: (value: unknown) => formatChartNumber(value) },
       axisLine: { show: false },
       axisTick: { show: false },
       splitNumber: 4,
@@ -161,20 +164,21 @@ export function PaceChart({ data }: { data: PaceChartData }) {
 
   return (
     <>
+      <AnalysisDataState state={missingValues ? "partial" : "ready"} locale={locale} updatedAt={data.updatedAt} availableSessionHref={data.availableSessionHref} />
       <div className="chart-context"><span>{data.sessionLabel}</span><span className={missingValues ? "chart-gap-note" : undefined}>{data.source === "FastF1" ? (missingValues ? `GAPS ${missingValues} · DASHED = GAP BRIDGE · SOLID = VALIDATED LAP` : "FASTF1 VALIDATED ARTIFACT") : data.source === "OpenF1" ? (missingValues ? `GAPS ${missingValues} · DASHED = GAP BRIDGE · SOLID = SESSION LAP` : "OPENF1 SESSION CONTEXT") : "AWAITING PROVIDER DATA"}</span></div>
       <div className="chart-stat-strip" aria-label="Lap pace summary">
-        <div className="chart-stat accent"><span>FASTEST LAP</span><strong>{formatLapTooltipValue(fastest)}</strong><small>{fastestSeries?.name ? `${fastestSeries.name} · ${fastestLapLabel}` : fastestLapLabel}</small></div>
-        <div className="chart-stat"><span>PACE GAP</span><strong>{paceGap === null ? "—" : `+${paceGap.toFixed(3)} s`}</strong><small>best selected drivers</small></div>
-        <div className="chart-stat"><span>VALID SAMPLES</span><strong>{allValues.length}</strong><small>{seriesData.length} drivers selected</small></div>
+        <div className="chart-stat accent"><span>{text(locale, "FASTEST LAP")}</span><strong>{formatLapTooltipValue(fastest)}</strong><small>{fastestSeries?.name ? `${fastestSeries.name} · ${fastestLapLabel}` : fastestLapLabel}</small></div>
+        <div className="chart-stat"><span>{text(locale, "PACE GAP")}</span><strong>{paceGap === null ? "—" : `+${paceGap.toFixed(3)} s`}</strong><small>{text(locale, "best selected drivers")}</small></div>
+        <div className="chart-stat"><span>{text(locale, "VALID SAMPLES")}</span><strong>{allValues.length}</strong><small>{seriesData.length} {text(locale, "drivers selected")}</small></div>
       </div>
       <div className="chart-wrap" role="group" aria-label={`Lap pace comparison for ${seriesData.map(series => series.name).join(" and ")}`}>
         <ReactECharts notMerge style={{ height: "100%", minHeight: 280 }} option={option} opts={{ renderer: "svg" }} />
       </div>
       <details className="chart-table-details">
-        <summary className="chart-table-toggle">OPEN DATA TABLE</summary>
+        <summary className="chart-table-toggle">{text(locale, "OPEN DATA TABLE")}</summary>
         <div className="table-scroll">
           <table className="data-table chart-data-table" aria-label="Lap pace data table">
-            <thead><tr><th scope="col">Lap</th>{seriesData.map(series => <th scope="col" key={series.code}>{series.code}</th>)}</tr></thead>
+            <thead><tr><th scope="col">{text(locale, "Lap")}</th>{seriesData.map(series => <th scope="col" key={series.code}>{series.code}</th>)}</tr></thead>
             <tbody>
               {data.laps.map((lap, index) => (
                 <tr key={lap}><td>{lap}</td>{seriesData.map(series => <td key={series.code}>{series.values[index] === null || series.values[index] === undefined ? "—" : `${series.values[index]?.toFixed(3)} s`}</td>)}</tr>

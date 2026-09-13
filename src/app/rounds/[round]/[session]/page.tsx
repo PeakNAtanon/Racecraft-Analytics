@@ -1,3 +1,4 @@
+import { AnalysisDataState } from "@/components/analysis-data-state";
 import { notFound } from "next/navigation";
 import { getSessionAnalytics } from "@/lib/data-api";
 import { getScheduleRound } from "@/lib/schedule";
@@ -18,5 +19,5 @@ export default async function SessionPage({ params }: { params: Promise<{ round:
   const [analytics, locale, timezone, timezoneMode] = await Promise.all([session.status === "scheduled" ? Promise.resolve(null) : getSessionAnalytics({ sessionKey: session.sessionKey, season: round.season, round: round.round, sessionCode: session.code, sessionName: session.name, fastF1Only: true }), getLocale(), getTimezone(), getTimezoneMode()]);
   const effectiveTimezone = displayTimezone(timezoneMode, timezone, round.circuit.country, round.circuit.locality);
 
-  return <><PageHead eyebrow={`${round.name} · ${session.code}`} title={session.name}>Jolpica results, OpenF1 context and FastF1-only validated analysis <StatusBadge status={session.status} /></PageHead><SessionCountdown session={session} locale={locale} timezone={effectiveTimezone}/>{session.status === "scheduled" ? <div className="empty">This session has not started yet. FastF1 analysis will appear after the worker publishes a validated artifact.</div> : analytics ? <><SessionResults analytics={analytics} locale={locale}/><MetricGrid items={analytics.metrics} /><section className="section panel"><h2>FastF1 lap-by-lap pace</h2><PaceChart data={analytics.pace} /></section></> : <MetricGrid items={fallbackMetrics} />}</>;
+  return <><PageHead eyebrow={`${round.name} · ${session.code}`} title={session.name}>Jolpica results, OpenF1 context and FastF1-only validated analysis <StatusBadge status={session.status} /></PageHead><SessionCountdown session={session} locale={locale} timezone={effectiveTimezone}/>{session.status === "scheduled" ? <AnalysisDataState state="scheduled" locale={locale} /> : analytics ? <><SessionResults analytics={analytics} locale={locale}/><MetricGrid items={analytics.metrics} /><section className="section panel"><h2>FastF1 lap-by-lap pace</h2><PaceChart data={analytics.pace} locale={locale} /></section></> : <MetricGrid items={fallbackMetrics} />}</>;
 }

@@ -138,6 +138,29 @@ function runtimeCheck(id: string, label: string, provider: string, configured: b
   };
 }
 
+async function databaseCheck(): Promise<DiagnosticCheck> {
+  const url = process.env.DATABASE_URL;
+  const check = runtimeCheck("database", "Application database", "PostgreSQL", Boolean(url), "PostgreSQL");
+  if (!url) return check;
+  try {
+    const { default: postgres } = await import("postgres");
+    const sql = postgres(url, { max: 1, connect_timeout: 3, idle_timeout: 1 });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        sql`select 1 as ok`,
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Database check timed out")), 4000); }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+      await sql.end({ timeout: 1 }).catch(() => undefined);
+    }
+    return { ...check, status: "live", reason: "PostgreSQL responded to a connectivity query." };
+  } catch {
+    return { ...check, status: "unavailable", reason: "PostgreSQL is configured but the connectivity query failed or timed out." };
+  }
+}
+
 function providerConfig(id: string): { configuration: DiagnosticConfiguration; endpoint: string } {
   if (id === "jolpica") {
     const value = process.env.JOLPICA_BASE_URL;
@@ -168,7 +191,7 @@ async function collectCompletenessSnapshot(): Promise<CompletenessSnapshot> {
   const checks = dataHub.categories.map(buildDiagnosticCheck);
   const telemetryArtifacts = dataHub.categories.find((category) => category.id === "telemetry")?.count ?? 0;
   const runtimeChecks = [
-    runtimeCheck("database", "Application database", "PostgreSQL", Boolean(process.env.DATABASE_URL), "PostgreSQL"),
+    await databaseCheck(),
     runtimeCheck("storage", "Telemetry storage", "Local volume / object storage", Boolean(process.env.TELEMETRY_STORAGE_PATH), process.env.TELEMETRY_STORAGE_PATH ?? "Telemetry artifact storage"),
     runtimeCheck("fastf1-worker", "FastF1 worker", "FastF1 worker", Boolean(process.env.FASTF1_CACHE), process.env.TELEMETRY_STORAGE_PATH ?? "Telemetry artifact storage", telemetryArtifacts === 0),
   ];

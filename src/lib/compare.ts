@@ -1,6 +1,14 @@
 import type { FastF1ArtifactInventoryItem } from "./fastf1-artifacts";
 import type { ComparisonSession } from "./types";
 
+export interface ComparisonFilters { session: string; round: string; circuit: string }
+
+export function filterComparisonSessions(sessions: ComparisonSession[], filters: ComparisonFilters) {
+  return sessions.filter(session => (filters.session === "ALL" || session.sessionCode === filters.session)
+    && (filters.round === "ALL" || String(session.round) === filters.round)
+    && (filters.circuit === "ALL" || session.circuit === filters.circuit));
+}
+
 export function selectDriverPair(availableCodes: string[], preferredCodes: string[] = [], requestedCodes: string[] = []) {
   const available = new Set(availableCodes);
   return Array.from(new Set([...requestedCodes, ...preferredCodes, ...availableCodes]))

@@ -10,6 +10,7 @@ import { driverHistorySeeds } from "./driver-history";
 import { circuitHistorySeed } from "./circuit-history";
 import { durationLabel, gapLabel } from "./session-result-format";
 import { finiteNumber } from "./number-utils";
+import { getScheduleRounds } from "./schedule";
 
 type JsonRecord = Record<string, unknown>;
 type ApiState = "live" | "unavailable" | "awaiting_data" | "worker" | "not_applicable";
@@ -489,21 +490,28 @@ export async function getSessionAnalytics(options: { sessionKey?: number; season
   const fastF1Only = options.fastF1Only ?? true;
   let sessionKey = options.sessionKey;
   let sessionName = options.sessionName ?? "Latest completed session";
-
-  if (!sessionKey && !options.sessionName) {
-    const sessions = await fetchJson(`${openf1}/sessions?year=${season}`);
-    const sessionRows = records(sessions.data)
-      .filter(row => Date.parse(text(row.date_start)) <= Date.now())
-      .sort((a, b) => Date.parse(text(b.date_start)) - Date.parse(text(a.date_start)));
-    sessionKey = finiteNumber(sessionRows[0]?.session_key);
-    sessionName = text(sessionRows[0]?.session_name) === "—" ? sessionName : text(sessionRows[0]?.session_name);
+  let resolvedRound = options.round;
+  let selectedSessionCode = options.sessionCode ?? canonicalSessionCode(sessionName);
+  if (resolvedRound === undefined || sessionKey !== undefined) {
+    const schedule = await getScheduleRounds(season);
+    const candidates = schedule.flatMap(round => round.sessions.map(session => ({ round: round.round, session })))
+      .filter(({ round, session }) => (resolvedRound === undefined || round === resolvedRound)
+        && (!selectedSessionCode || session.code === selectedSessionCode));
+    const selected = sessionKey !== undefined
+      ? candidates.find(({ session }) => session.sessionKey === sessionKey)
+      : candidates.filter(({ session }) => session.endsAt && Date.parse(session.endsAt) <= Date.now())
+        .sort((a, b) => Date.parse(b.session.endsAt!) - Date.parse(a.session.endsAt!))[0];
+    if (selected) {
+      resolvedRound = selected.round;
+      selectedSessionCode = selected.session.code;
+      sessionKey = selected.session.sessionKey;
+      sessionName = selected.session.name;
+    } else if (sessionKey !== undefined) {
+      return fallbackSessionAnalytics(sessionKey, sessionName);
+    }
   }
 
-  const selectedSessionCode = options.sessionCode ?? canonicalSessionCode(sessionName);
-  const latestPublishedArtifact = options.round === undefined
-    ? (await getFastF1ArtifactInventory(season)).filter(item => item.sessionCode === (selectedSessionCode === "SPR" ? "S" : selectedSessionCode)).at(-1)
-    : undefined;
-  const fastF1Artifact = await getFastF1SessionArtifact({ season, round: options.round ?? latestPublishedArtifact?.round, sessionCode: selectedSessionCode, sessionKey });
+  const fastF1Artifact = resolvedRound === undefined ? null : await getFastF1SessionArtifact({ season, round: resolvedRound, sessionCode: selectedSessionCode, sessionKey });
   if (!sessionKey && fastF1Artifact) return fastF1Artifact;
   if (!sessionKey) return fallbackSessionAnalytics(undefined, sessionName);
 
@@ -518,15 +526,11 @@ export async function getSessionAnalytics(options: { sessionKey?: number; season
 
   let results = parseOpenF1Results(sessionResult.data, driverMap);
   let resultsSource: "OpenF1" | "Jolpica" | "fallback" = results.length ? "OpenF1" : "fallback";
-  if (!results.length && options.round !== undefined && selectedSessionCode) {
+  if (!results.length && resolvedRound !== undefined && selectedSessionCode) {
     const jolpica = (process.env.JOLPICA_BASE_URL ?? "https://api.jolpi.ca/ergast/f1").replace(/\/$/, "");
     const endpoint = jolpicaSessionEndpoint(selectedSessionCode);
-    const response = endpoint ? await fetchJson(`${jolpica}/${season}/${options.round}/${endpoint}.json`) : { ok: false };
+    const response = endpoint ? await fetchJson(`${jolpica}/${season}/${resolvedRound}/${endpoint}.json`) : { ok: false };
     results = parseJolpicaResultsForCode(response.data, selectedSessionCode);
-    resultsSource = results.length ? "Jolpica" : "fallback";
-  } else if (!results.length && selectedSessionCode === "R" && options.sessionKey === undefined) {
-    const jolpica = (process.env.JOLPICA_BASE_URL ?? "https://api.jolpi.ca/ergast/f1").replace(/\/$/, "");
-    results = parseJolpicaRaceResults((await fetchJson(`${jolpica}/current/last/results.json`)).data);
     resultsSource = results.length ? "Jolpica" : "fallback";
   }
 

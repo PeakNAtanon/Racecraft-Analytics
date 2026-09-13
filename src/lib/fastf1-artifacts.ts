@@ -1,10 +1,14 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { DriverRacecraftSnapshot, DriverTelemetrySnapshot, FastF1DriverAvailability, FastF1DriverMetrics, Metric, PaceChartData, SessionAnalyticsSnapshot, StintSnapshot } from "@/lib/types";
 
 type ArtifactMetric = { driver?: string; validLaps?: number; cleanLapMedian?: number; bestLap?: number; consistency?: number | null; degradationSlope?: number | null; theoreticalBest?: number | null };
 type ArtifactWeather = { sampleCount?: number; latest?: { timestamp?: string; airTemperature?: number; trackTemperature?: number; humidity?: number; windSpeed?: number; windDirection?: number; rainfall?: boolean } };
 type Artifact = {
+  updatedAt?: string;
+  schemaVersion?: string;
+  season?: number;
+  round?: number;
   provider?: string;
   status?: string;
   sessionName?: string;
@@ -14,9 +18,19 @@ type Artifact = {
   pace?: { laps?: number[]; series?: Array<{ code?: string; name?: string; values?: Array<number | null> }> };
   stints?: Array<{ driver?: string; stint?: number; compound?: string; startLap?: number; endLap?: number; lapCount?: number }>;
   racecraftByDriver?: Record<string, { positionsGained?: number; gridPosition?: number; finishPosition?: number }>;
-  telemetryByDriver?: Record<string, { available?: boolean; sampleCount?: number; fields?: string[]; samples?: Array<{ timestamp?: string; speed?: number; throttle?: number; brake?: number; gear?: number }> }>;
+  telemetryByDriver?: Record<string, { available?: boolean; sampleCount?: number; fields?: string[]; samples?: Array<{ timestamp?: string; distance?: number; speed?: number; throttle?: number; brake?: number; gear?: number }> }>;
   weather?: ArtifactWeather;
 };
+
+// v5 remains readable on the time axis while the worker refreshes to v6.
+const artifactSchemaVersions = new Set(["fastf1-session-v5", "fastf1-session-v6"]);
+const artifactCode = (code: string) => code.toUpperCase() === "SPR" ? "S" : code.toUpperCase();
+
+function matchesArtifact(artifact: Partial<Artifact>, season: number, round: number, code: string) {
+  return artifact.provider === "FastF1" && artifact.status === "complete"
+    && artifactSchemaVersions.has(artifact.schemaVersion ?? "") && artifact.season === season && artifact.round === round
+    && typeof artifact.sessionCode === "string" && artifactCode(artifact.sessionCode) === artifactCode(code);
+}
 
 function artifactRoot() {
   return process.env.TELEMETRY_STORAGE_PATH ?? process.env.FASTF1_ARTIFACTS_DIR;
@@ -70,7 +84,7 @@ export async function getFastF1ArtifactInventory(season?: number): Promise<FastF
         const sessionPath = path.join(sessionDirectory, "session.json");
         try {
           const parsed = JSON.parse(await readFile(sessionPath, "utf8")) as Partial<Artifact>;
-          if (parsed.provider !== "FastF1") continue;
+          if (!matchesArtifact(parsed, seasonNumber, round, sessionCode)) continue;
           inventory.push({
             season: seasonNumber,
             round,
@@ -97,7 +111,8 @@ async function readArtifact(season: number, round: number | undefined, sessionCo
     const parsed: unknown = JSON.parse(await readFile(filename, "utf8"));
     if (!parsed || typeof parsed !== "object") return null;
     const artifact = parsed as Artifact;
-    return artifact.provider === "FastF1" && artifact.status === "complete" ? artifact : null;
+    if (!matchesArtifact(artifact, season, round, sessionCode)) return null;
+    return { ...artifact, updatedAt: (await stat(filename)).mtime.toISOString() };
   } catch {
     return null;
   }
@@ -163,7 +178,8 @@ function toSnapshot(artifact: Artifact, sessionKey: number | undefined, results:
     { id: "tyres.degradation", label: "Tyre degradation", value: metricValue(degradation.length ? Math.min(...degradation) : undefined), note: "FastF1 slope per lap", tone: "red" },
   ];
   const pace: PaceChartData = {
-    sessionLabel: `FastF1 · ${artifact.sessionName ?? artifact.sessionCode ?? "Session"}`,
+    sessionLabel: `FastF1 · ${artifact.season} · Round ${artifact.round} · ${artifact.sessionName ?? artifact.sessionCode ?? "Session"}`,
+    updatedAt: artifact.updatedAt,
     source: "FastF1",
     laps: artifact.pace?.laps ?? [],
     series: (artifact.pace?.series ?? []).map(item => ({ code: item.code ?? "—", name: item.name ?? item.code ?? "Driver", values: item.values ?? [] })),

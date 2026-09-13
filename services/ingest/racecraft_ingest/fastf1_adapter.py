@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from pathlib import Path
 from statistics import median, pstdev
@@ -9,7 +10,7 @@ from typing import Any
 from .analytics import degradation_slope, theoretical_best
 
 
-FASTF1_ARTIFACT_SCHEMA_VERSION = "fastf1-session-v4"
+FASTF1_ARTIFACT_SCHEMA_VERSION = "fastf1-session-v6"
 
 
 def _records(frame: Any) -> list[dict[str, Any]]:
@@ -116,9 +117,15 @@ def _driver_code(row: Mapping[str, Any]) -> str:
     return _text(row.get("Driver") or row.get("Abbreviation") or row.get("DriverNumber"), "UNKNOWN").upper()
 
 
+def _validated_fastest(session: Any, driver: str):
+    laps = session.laps.pick_drivers(driver)
+    validated = laps.loc[laps.apply(lambda row: _clean_lap(row) is not None, axis=1)]
+    return validated.pick_fastest(only_by_time=True)
+
+
 def _telemetry_snapshot(session: Any, driver: str, output_dir: Path) -> dict[str, Any] | None:
     try:
-        fastest = session.laps.pick_drivers(driver).pick_fastest()
+        fastest = _validated_fastest(session, driver)
         if fastest is None or getattr(fastest, "empty", False):
             return None
         telemetry = fastest.get_telemetry()
@@ -128,8 +135,9 @@ def _telemetry_snapshot(session: Any, driver: str, output_dir: Path) -> dict[str
     if not rows:
         return None
 
-    field_map = {"Speed": "speed", "Throttle": "throttle", "Brake": "brake", "nGear": "gear"}
-    fields = [target for source, target in field_map.items() if any(not _missing(row.get(source)) for row in rows)]
+    # get_telemetry() already supplies FastF1's lap-distance channel in metres.
+    # Preserve its origin; never integrate speed or rebase samples here.
+    field_map = {"Speed": "speed", "Throttle": "throttle", "Brake": "brake", "nGear": "gear", "Distance": "distance"}
     samples: list[dict[str, Any]] = []
     for row in rows:
         sample: dict[str, Any] = {}
@@ -138,10 +146,11 @@ def _telemetry_snapshot(session: Any, driver: str, output_dir: Path) -> dict[str
             sample["timestamp"] = str(date)
         for source, target in field_map.items():
             value = _number(row.get(source))
-            if value is not None:
+            if value is not None and (target != "distance" or math.isfinite(value)):
                 sample[target] = value
         if len(sample) > 1:
             samples.append(sample)
+    fields = [target for target in field_map.values() if any(target in sample for sample in samples)]
     if not samples or not fields:
         return None
 
@@ -187,7 +196,9 @@ class FastF1Adapter:
         return session
 
     def export_driver_telemetry(self, session, driver: str, destination: str) -> int:
-        lap = session.laps.pick_drivers(driver).pick_fastest()
+        lap = _validated_fastest(session, driver)
+        if lap is None or getattr(lap, "empty", False):
+            return 0
         telemetry = lap.get_telemetry()
         telemetry.to_parquet(destination, compression="zstd", index=False)
         return len(telemetry)
@@ -234,6 +245,7 @@ class FastF1Adapter:
             sectors = [
                 [_seconds(row.get(column)) for column in ("Sector1Time", "Sector2Time", "Sector3Time")]
                 for row in rows
+                if _clean_lap(row) is not None
             ]
             sectors = [[value for value in row if value is not None] for row in sectors]
             sector_matrix = [row for row in sectors if len(row) == 3]

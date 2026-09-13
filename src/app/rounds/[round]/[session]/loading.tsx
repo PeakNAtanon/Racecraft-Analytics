@@ -1,2 +1,2 @@
 import { RouteLoading } from "@/components/route-loading";
-export default function Loading() { return <RouteLoading variant="dashboard" label="Loading session analysis…" />; }
+export default function Loading() { return <RouteLoading label="Loading session analysis…" />; }

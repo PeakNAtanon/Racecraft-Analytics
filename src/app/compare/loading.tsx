@@ -1,2 +1,2 @@
 import { RouteLoading } from "@/components/route-loading";
-export default function Loading() { return <RouteLoading variant="dashboard" label="Loading driver comparison…" />; }
+export default function Loading() { return <RouteLoading label="Loading driver comparison…" />; }

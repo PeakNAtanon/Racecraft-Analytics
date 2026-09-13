@@ -1,2 +1,2 @@
 import { RouteLoading } from "@/components/route-loading";
-export default function Loading() { return <RouteLoading variant="cards" label="Loading race calendar…" />; }
+export default function Loading() { return <RouteLoading label="Loading race calendar…" />; }

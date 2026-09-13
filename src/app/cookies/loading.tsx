@@ -1,2 +1,2 @@
 import { RouteLoading } from "@/components/route-loading";
-export default function Loading() { return <RouteLoading variant="article" label="Loading cookie policy…" />; }
+export default function Loading() { return <RouteLoading label="Loading cookie policy…" />; }

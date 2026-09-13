@@ -128,7 +128,8 @@ async function loadScheduleRounds(season: number): Promise<Round[]> {
         match = meeting;
       }
     }
-    if (match && distance <= 7 * 86400000) availableMeetings.delete(match);
+    if (!match || distance > 7 * 86400000) return undefined;
+    availableMeetings.delete(match);
     return match;
   };
 

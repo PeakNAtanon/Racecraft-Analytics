@@ -16,6 +16,8 @@ npm run dev
 
 เปิด `http://localhost:3000/diagnostics` เพื่อดู Data Completeness Dashboard และใช้ `http://localhost:3000/api/diagnostics/completeness` สำหรับ JSON smoke checks. Routes นี้เปิดใน development โดยอัตโนมัติ และถูกปิดใน production เว้นแต่ตั้ง `ENABLE_DEV_DIAGNOSTICS=true`; response แสดงเฉพาะสถานะ/จำนวนข้อมูลและไม่ส่งค่า secret กลับไป
 
+`/api/export/standings` ส่ง CSV เฉพาะข้อมูลจาก Jolpica หากเหลือเพียงข้อมูลสำรองจะตอบ `503` พร้อม `Retry-After: 600` เพื่อไม่ให้คะแนนสำรองถูกเข้าใจว่าเป็นข้อมูลล่าสุด ส่วน diagnostics จะรายงาน PostgreSQL เป็น `live` หลัง query ตรวจการเชื่อมต่อสำเร็จเท่านั้น โดยมี timeout และ cache ผลตรวจ 60 วินาที
+
 ## Worker
 
 ```powershell
@@ -27,7 +29,15 @@ py -m venv .venv
 
 ตั้ง `DATABASE_URL`, PostgreSQL และ provider variables ตาม `.env.example` โดย worker ต้องมี persistent volume ที่ `/data` สำหรับ FastF1 cache และเรียก worker ทุก 10 นาที เมื่อ OpenF1 ปิดระหว่าง session worker จะรายงาน `awaiting_data` และลองใหม่ในรอบถัดไปจนกว่าจะเผยแพร่ข้อมูลหลังจบ session
 
+หาก FastF1 ประมวลผล session ไม่สำเร็จ worker จะพักรายการนั้นอย่างน้อย 20 นาที และให้รายการที่ยังไม่เคยลองทำงานก่อน retry โดยยังลองโหลดไม่เกินหนึ่ง session ต่อรอบ สถานะ retry เก็บในหน่วยความจำและเริ่มใหม่เมื่อ worker restart; `fastf1_pending` นับ session ทั้งหมดที่ยังไม่มี artifact รุ่นปัจจุบัน
+
 ## Self-hosted Docker on Debian
+
+Artifact รุ่น `fastf1-session-v6` เพิ่ม `distance` หน่วยเมตรจากคอลัมน์ `Distance` ของ FastF1 โดยใช้ lap ที่ผ่าน validation ชุดเดียวกันสำหรับ pace, theoretical best และ telemetry เว็บอ่านได้ทั้ง v5 และ v6 แต่ไม่อ่านรุ่นก่อน v5 หรือ artifact ที่ season/round/session ไม่ตรงกับตำแหน่งจัดเก็บ หลังอัปเดตต้อง deploy ทั้งเว็บและ worker; worker จะทยอยสร้าง v5 ใหม่เป็น v6 โดยเว็บยังแสดงแกนเวลาจาก v5 ได้ระหว่างรอ ไม่ต้องลบไฟล์เก่าเอง
+
+กราฟ telemetry ในหน้า Drivers/Compare เลือกแกนระยะทางเป็นค่าเริ่มต้นเมื่อทุก trace ที่เลือกมีระยะทางครบและไม่ย้อนกลับ และสลับกลับแกนเวลาได้ กราฟทั้งสี่ช่องและตารางใช้แกนเดียวกัน หากระยะทางขาดหายหรือใช้ artifact เก่า ปุ่มระยะทางจะถูกปิดพร้อมคำอธิบาย เว็บไม่อินทิเกรตความเร็ว ไม่ย้ายจุดเริ่มระยะทาง และไม่ยืดแต่ละรอบให้ยาวเท่ากัน ระยะทางนี้เป็นค่าที่ FastF1 คำนวณจาก telemetry ไม่ใช่พิกัด GPS ที่รับประกันตำแหน่งเดียวกันอย่างแม่นยำ
+
+หน้า Compare เก็บตัวกรอง `session`, `round`, `circuit` ใน URL และโหลด artifact ล่าสุดที่ตรงกับตัวกรองจาก server ใหม่ทุกครั้ง หากไม่มี artifact ตรงกันจะไม่ใช้ข้อมูลจากสนามอื่นแทน หน้าแรกใช้กราฟจาก FastF1 เท่านั้น
 
 โปรเจกต์มี production Docker stack สำหรับ self-hosted PostgreSQL, Next.js web, FastF1 worker, Nginx และ Traefik โดย Traefik bind ที่ `127.0.0.1:3333` แล้วส่งต่อเข้า Nginx ภายใน เพื่อให้ Cloudflare Tunnel เดิมชี้ไปที่ `http://localhost:3333` ได้
 
@@ -51,6 +61,23 @@ Migration อยู่ที่ `database/migrations/` และ Docker PostgreS
 ถ้ามี `postgres_data` เดิมอยู่แล้ว ให้สำรองก่อน แล้วรันเฉพาะ migration ใหม่ด้วย `docker compose exec -T postgres psql -U <POSTGRES_USER> -d <POSTGRES_DB> -f /docker-entrypoint-initdb.d/0002_telemetry_artifacts.sql` โดยไม่ต้องรัน `0001_initial.sql` ซ้ำ
 
 ## Validation
+
+ทุกหน้าใช้ข้อความสถานะโหลดเท่านั้น ไม่มี skeleton หรือ shimmer รวมทั้ง loading ของหน้า Drivers และ Suspense ในหน้า Compare/Data โดยยังคง loading boundary และข้อความที่ screen reader อ่านได้
+
+### FastF1 real-data smoke check (opt-in)
+
+ดาวน์โหลดเฉพาะเซสชันที่เผยแพร่แล้วผ่าน adapter ตัวเดียวกับ worker และเขียนลง directory ใหม่เท่านั้น ไม่เชื่อม PostgreSQL ไม่รัน worker loop และไม่แก้ telemetry ที่ใช้งานอยู่ ต้องติดตั้ง dependencies ของ ingest ก่อน ตัวอย่างบน Linux จาก root โปรเจกต์:
+
+```bash
+validation_dir=$(mktemp -d /tmp/racecraft-validation-XXXXXX)
+PYTHONPATH=services/ingest services/ingest/.venv/bin/python scripts/validate-fastf1.py \
+  --season 2024 --round 6 --session R --output "$validation_dir/miami"
+FASTF1_VALIDATION_ROOT="$validation_dir/miami/artifacts" npx vitest run src/lib/fastf1-live.test.ts
+```
+
+เปลี่ยน Python path ให้ตรงกับ virtualenv ที่ติดตั้งจริง ตัวตรวจ Python ตรวจ JSON, lap alignment, telemetry และจำนวนแถว Parquet; ตัวตรวจ TypeScript อ่าน artifact จริงผ่าน server data API และตัวแปลงแกนเวลาที่กราฟใช้ พร้อมยืนยันว่าไม่เรียก provider จากขั้นตอนอ่านไฟล์ กรณี Sprint ใช้ `--session S` (เว็บรับ `SPR`) สามารถตรวจเพิ่มด้วยปี 2024 round 5 / S และ round 12 / R สำหรับกรณี Sprint และสภาพผิวสนามเปลี่ยนแห้ง–เปียก
+
+ชุดทดสอบปกติจะ skip real-data check หากไม่ตั้ง `FASTF1_VALIDATION_ROOT` เพื่อไม่ดาวน์โหลดข้อมูลโดยไม่ตั้งใจ การตรวจนี้ไม่ครอบคลุมการ deploy, worker scheduling หรือการเชื่อม PostgreSQL/OpenF1/Jolpica จริง ข้อมูล cache, JSON และ Parquet ทดสอบต้องอยู่นอก Git
 
 ```powershell
 npm run lint

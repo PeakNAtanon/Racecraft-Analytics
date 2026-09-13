@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { latestFastF1Session, selectDriverPair } from "./compare";
+import { filterComparisonSessions, latestFastF1Session, selectDriverPair } from "./compare";
 import type { FastF1ArtifactInventoryItem } from "./fastf1-artifacts";
 import type { ComparisonSession } from "./types";
 
@@ -21,6 +21,14 @@ function artifact(overrides: Partial<FastF1ArtifactInventoryItem>): FastF1Artifa
 }
 
 describe("Compare FastF1 session selection", () => {
+  it("selects a matching artifact after applying round, circuit and session filters", () => {
+    const sessions = [session({ round: 1, sessionCode: "Q", sessionKey: 10 }), session({ round: 2, sessionKey: 20, startsAt: "2026-04-01" })];
+    const artifacts = [artifact({ round: 1, sessionCode: "Q" }), artifact({ round: 2 })];
+    const filtered = filterComparisonSessions(sessions, { round: "1", circuit: "Test Circuit", session: "Q" });
+    expect(latestFastF1Session(filtered, artifacts)?.sessionKey).toBe(10);
+    expect(latestFastF1Session(filterComparisonSessions(sessions, { round: "1", circuit: "Other Circuit", session: "Q" }), artifacts)).toBeUndefined();
+    expect(latestFastF1Session(filtered, [artifact({ round: 2 })])).toBeUndefined();
+  });
   it("selects the latest session with a published FastF1 artifact", () => {
     const selected = latestFastF1Session([
       session({ sessionKey: 10, round: 1, startsAt: "2026-03-01T12:00:00Z" }),
