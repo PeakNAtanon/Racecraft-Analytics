@@ -31,16 +31,16 @@ function formatNumber(value: number | null, digits = 1) {
 
 function resultPositions(sessions: ComparisonSession[], code: string) {
   return sessions.flatMap(session => {
-    const result = session.results.find(item => item.code === code);
+    const result = session.results.find(item => item.code.toUpperCase() === code.toUpperCase());
     return result?.status === "CLASSIFIED" && result.position !== undefined && Number.isFinite(result.position) ? [result.position] : [];
   });
 }
 
 function buildSummary(drivers: Standing[], sessions: ComparisonSession[], pace: PaceChartData) {
-  const paceByCode = new Map(pace.series.map(series => [series.code, series]));
+  const paceByCode = new Map(pace.series.map(series => [series.code.toUpperCase(), series]));
   const raw = drivers.map(driver => {
     const positions = resultPositions(sessions, driver.code);
-    const paceValues = (paceByCode.get(driver.code)?.values ?? []).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    const paceValues = (paceByCode.get(driver.code.toUpperCase())?.values ?? []).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
     const medianPace = median(paceValues);
     return { ...driver, bestFinish: positions.length ? Math.min(...positions) : null, averageFinish: positions.length ? positions.reduce((sum, value) => sum + value, 0) / positions.length : null, validSessions: positions.length, medianPace, consistency: deviation(paceValues, medianPace), validLaps: paceValues.length, paceGap: null };
   });
@@ -65,6 +65,7 @@ function chartTooltipValue(value: unknown, suffix = "") {
 function DriverFieldChart({ rows, locale }: { rows: SummaryRow[]; locale: Locale }) {
   const sorted = [...rows].sort((a, b) => (b.points ?? Number.NEGATIVE_INFINITY) - (a.points ?? Number.NEGATIVE_INFINITY) || a.position - b.position);
   if (!sorted.length) return <div className="empty">{text(locale, "No drivers selected for the overview.")}</div>;
+  if (!sorted.some(row => typeof row.points === "number" && Number.isFinite(row.points))) return <div className="empty">{text(locale, "No championship points are available for this filter.")}</div>;
   const option = {
     backgroundColor: "transparent",
     animation: false,
@@ -83,9 +84,10 @@ function PositionHeatmap({ rows, sessions, locale }: { rows: SummaryRow[]; sessi
   const labels = sessions.map(session => `${session.circuit}\n${session.sessionCode}`);
   const maxPosition = Math.max(1, ...sessions.flatMap(session => session.results.flatMap(result => result.status !== "CLASSIFIED" || result.position === undefined ? [] : [result.position])));
   const data = rows.flatMap((row, y) => sessions.flatMap((session, x) => {
-    const position = session.results.find(result => result.code === row.code && result.status === "CLASSIFIED")?.position;
+    const position = session.results.find(result => result.code.toUpperCase() === row.code.toUpperCase() && result.status === "CLASSIFIED")?.position;
     return typeof position === "number" ? [[x, y, position]] : [];
   }));
+  if (!data.length) return <div className="empty">{text(locale, "No classified positions are available for this filter.")}</div>;
   const option = {
     backgroundColor: "transparent",
     animation: false,

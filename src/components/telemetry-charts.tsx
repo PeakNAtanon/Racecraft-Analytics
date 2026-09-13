@@ -19,6 +19,10 @@ export function TelemetryCharts({ traces, locale }: { traces: Array<{ code: stri
     : elapsedTelemetry(trace.telemetry.samples).map(sample => ({ ...sample, x: sample.elapsed })) }));
   const fields = ["speed", "throttle", "brake", "gear"] as const;
   const labels = [text(locale, "Speed"), text(locale, "Throttle"), text(locale, "Brake"), text(locale, "Gear")];
+  const sourceFields = fields.filter(field => traces.some(trace => trace.telemetry.samples.some(sample => typeof sample[field] === "number" && Number.isFinite(sample[field]))));
+  const availableFields = fields.filter(field => plotted.some(trace => trace.samples.some(sample => typeof sample[field] === "number" && Number.isFinite(sample[field]))));
+  const missingFields = fields.filter(field => !availableFields.includes(field));
+  const missingLabels = missingFields.map(field => labels[fields.indexOf(field)]);
   const coordinates = plotted.flatMap(trace => trace.samples.map(sample => sample.x));
   const minimum = Math.min(0, ...coordinates);
   const maximum = Math.max(...coordinates, 1);
@@ -33,6 +37,10 @@ export function TelemetryCharts({ traces, locale }: { traces: Array<{ code: stri
     yAxis: fields.map((field, index) => ({ type: "value", gridIndex: index, name: `${labels[index]}${field === "speed" ? " · km/h" : field === "throttle" ? " · %" : ""}`, nameTextStyle: { color: "#c3cbd5" }, min: 0, ...(field === "speed" ? {} : { max: field === "throttle" ? 100 : field === "brake" ? 1 : 8, interval: field === "brake" ? 1 : undefined }), axisLabel: { color: "#c3cbd5", ...(field === "brake" ? { formatter: (value: number) => text(locale, value === 1 ? "On" : "Off") } : {}) }, splitLine: { lineStyle: { color: "#29313d" } } })),
     dataZoom: [{ type: "inside", xAxisIndex: [0, 1, 2, 3], filterMode: "none", zoomOnMouseWheel: "ctrl" }, { type: "slider", xAxisIndex: [0, 1, 2, 3], bottom: 0, height: 22, filterMode: "none", textStyle: { color: "#c3cbd5" } }],
     series: fields.flatMap((field, index) => plotted.map(trace => ({ name: trace.code, type: "line", xAxisIndex: index, yAxisIndex: index, showSymbol: false, connectNulls: false, step: field === "gear" || field === "brake" ? "end" : false, lineStyle: { color: trace.color, width: 2 }, itemStyle: { color: trace.color }, data: trace.samples.map(sample => [sample.x, typeof sample[field] === "number" && Number.isFinite(sample[field]) ? sample[field] : null]) }))),
+    graphic: missingFields.map(field => {
+      const index = fields.indexOf(field);
+      return { type: "text", left: "center", top: 50 + index * 115 + 24, silent: true, style: { text: `${labels[index]} · NO DATA`, fill: "#a6b0bf", fontSize: 11, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "system-ui, sans-serif" } };
+    }),
   };
   return <div className="telemetry-detail">
     <div className="telemetry-axis-controls" role="group" aria-label={text(locale, "Telemetry axis")}>
@@ -41,9 +49,10 @@ export function TelemetryCharts({ traces, locale }: { traces: Array<{ code: stri
     </div>
     {!distanceReady && <p id={hintId} role="status">{text(locale, "Distance is unavailable or incomplete for one or more selected drivers. Use time; older artifacts need a worker refresh.")}</p>}
     <p>{text(locale, axis === "distance" ? "Drag to zoom all traces together. Distance uses FastF1's computed lap-distance channel, not exact GPS position. No distance is calculated in the browser." : "Drag to zoom all traces together. Times start at the first recorded sample of each lap.")}</p>
-    {coordinates.length ? <>
+    {coordinates.length && availableFields.length ? <>
+      {missingFields.length > 0 && <p role="status">{text(locale, "Telemetry channels without samples:")} {missingLabels.join(" · ")}</p>}
       <LazyECharts key={axis} notMerge option={option} style={{ height: 550, width: "100%" }} opts={{ renderer: "svg" }} />
       <details className="chart-table-details" onToggle={event => setTableOpen(event.currentTarget.open)}><summary className="chart-table-toggle">{text(locale, "OPEN DATA TABLE")}</summary>{tableOpen && <div className="table-scroll" tabIndex={0} role="region" aria-label={text(locale, "Telemetry trace")}><table className="data-table"><thead><tr><th>{axisLabel}</th><th>{text(locale, "Source")}</th>{labels.map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{plotted.flatMap(trace => trace.samples.map((sample, index) => <tr key={`${trace.code}-${index}`}><td>{sample.x.toFixed(3)}</td><td>{trace.code}</td>{fields.map(field => <td key={field}>{sample[field] ?? "—"}</td>)}</tr>))}</tbody></table></div>}</details>
-    </> : <p className="empty">{text(locale, "Telemetry needs valid timestamps to align the traces. No sample-index approximation is shown.")}</p>}
+    </> : <p className="empty">{text(locale, sourceFields.length ? "Telemetry needs valid timestamps to align the traces. No sample-index approximation is shown." : "No plotted telemetry channels are available for this trace.")}</p>}
   </div>;
 }

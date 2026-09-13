@@ -55,3 +55,27 @@ it("deduplicates concurrent provider cache misses", async () => {
 
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
+
+it("keeps OpenF1-only session results linked to standings when its drivers endpoint is unavailable", async () => {
+  vi.stubEnv("JOLPICA_BASE_URL", "https://jolpica.test/ergast/f1");
+  vi.stubEnv("OPENF1_BASE_URL", "https://openf1.test/v1");
+  const fetchMock = vi.fn(async (input: string) => {
+    const url = String(input);
+    if (url.endsWith("/sessions?year=2026")) {
+      return Response.json([{ session_key: 10, session_name: "Practice 1", date_start: "2026-01-01T10:00:00Z", date_end: "2026-01-01T11:00:00Z", circuit_short_name: "Bahrain" }]);
+    }
+    if (url.endsWith("/2026.json")) return Response.json({ MRData: { RaceTable: { Races: [] } } });
+    if (url.endsWith("/2026/driverstandings.json")) return Response.json({ MRData: { StandingsTable: { StandingsLists: [{ round: "1", DriverStandings: [{ position: "1", points: "25", wins: "1", Driver: { code: "NOR", givenName: "Lando", familyName: "Norris" }, Constructors: [{ name: "McLaren" }] }] }] } } });
+    if (url.endsWith("/2026/drivers.json")) return Response.json({ MRData: { DriverTable: { Drivers: [{ code: "NOR", givenName: "Lando", familyName: "Norris", permanentNumber: "1" }] } } });
+    if (url.includes("/drivers?session_key=10")) return Response.json([]);
+    if (url.includes("/session_result?session_key=10")) return Response.json([{ driver_number: 1, position: 1, number_of_laps: 20 }]);
+    return Response.json({});
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  const { getSeasonComparison } = await import("./data-api");
+  const result = await getSeasonComparison(2026);
+
+  expect(result.sessions[0]?.results[0]?.code).toBe("NOR");
+  expect(result.sessions[0]?.resultsSource).toBe("OpenF1");
+});

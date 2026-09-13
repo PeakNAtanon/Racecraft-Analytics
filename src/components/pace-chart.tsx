@@ -38,7 +38,7 @@ const area = (top: string) => ({
 function selectSeries(data: PaceChartData) {
   const defaultCodes = data.defaultCodes ?? [];
   if (!defaultCodes.length) return data.series.slice(0, 2);
-  return defaultCodes.map(code => data.series.find(series => series.code === code)).filter((series): series is PaceSeries => Boolean(series));
+  return defaultCodes.map(code => data.series.find(series => series.code.toUpperCase() === code.toUpperCase())).filter((series): series is PaceSeries => Boolean(series));
 }
 
 function validValues(series: PaceSeries) {

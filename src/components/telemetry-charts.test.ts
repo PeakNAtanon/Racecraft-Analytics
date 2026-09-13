@@ -6,8 +6,10 @@ import type { DriverTelemetryPoint } from "@/lib/types";
 type ChartProps = { option: { xAxis: Array<{ name: string }>; series: Array<{ data: number[][] }>; dataZoom: Array<{ xAxisIndex: number[] }> } };
 const chart = vi.hoisted(() => vi.fn<(props: ChartProps) => null>(() => null));
 vi.mock("@/components/lazy-echarts", () => ({ LazyECharts: (props: ChartProps) => { chart(props); return null; } }));
+vi.mock("@/components/analysis-data-state", () => ({ AnalysisDataState: () => null }));
 import { TelemetryCharts } from "./telemetry-charts";
 import { ComparisonOverview } from "./comparison-overview";
+import { SeasonComparisonChart } from "./season-comparison-chart";
 
 beforeEach(() => chart.mockClear());
 const trace = (code: string, samples: DriverTelemetryPoint[]) => ({ code, color: "#ffffff", telemetry: { available: true, source: "FastF1" as const, sampleCount: samples.length, fields: ["speed", "distance"], samples } });
@@ -48,8 +50,53 @@ it("can use distance without requiring timestamps or manufacturing a time axis",
   expect(chart).toHaveBeenCalled();
 });
 
+it("does not mount a telemetry chart when the trace has no plotted channel values", () => {
+  const html = renderToStaticMarkup(createElement(TelemetryCharts, { locale: "en", traces: [trace("VER", [{ distance: 0 }, { distance: 20 }])] }));
+  expect(chart).not.toHaveBeenCalled();
+  expect(html).toContain("No plotted telemetry channels are available for this trace.");
+});
+
 it("keeps a missing selected driver in Compare's distance availability check", () => {
   const html = renderToStaticMarkup(createElement(ComparisonOverview, { locale: "en", drivers: [], sessions: [], pace: { source: "FastF1", sessionLabel: "Test", laps: [], series: [] }, stints: [], activeDrivers: ["VER", "HAM"], telemetryByDriver: { VER: trace("VER", complete).telemetry } }));
   expect(html).toContain('disabled=""');
   expect(html).toContain('aria-pressed="true">Time (s)');
+});
+
+it("does not mount blank overview charts when filtered values are missing", () => {
+  const html = renderToStaticMarkup(createElement(ComparisonOverview, {
+    locale: "en",
+    drivers: [{ position: 1, code: "VER", name: "Max Verstappen", team: "Red Bull" }],
+    sessions: [{ sessionKey: 1, round: 1, circuit: "Bahrain", sessionCode: "FP1", sessionName: "Practice 1", startsAt: "2026-03-01T10:00:00Z", results: [] }],
+    pace: { source: "FastF1", sessionLabel: "Test", laps: [], series: [] },
+    stints: [],
+    activeDrivers: ["VER"],
+  }));
+
+  expect(chart).not.toHaveBeenCalled();
+  expect(html).toContain("No championship points are available for this filter.");
+  expect(html).toContain("No classified positions are available for this filter.");
+});
+
+it("does not mount a blank season chart when selected drivers have no classified result", () => {
+  const html = renderToStaticMarkup(createElement(SeasonComparisonChart, {
+    locale: "en",
+    activeDrivers: ["VER"],
+    comparison: {
+      season: 2026,
+      source: "Jolpica",
+      drivers: [{ position: 1, code: "VER", name: "Max Verstappen", team: "Red Bull" }],
+      sessions: [{
+        sessionKey: 1,
+        round: 1,
+        circuit: "Bahrain",
+        sessionCode: "FP1",
+        sessionName: "Practice 1",
+        startsAt: "2026-03-01T10:00:00Z",
+        results: [{ driverNumber: 44, code: "HAM", name: "Lewis Hamilton", team: "Ferrari", status: "CLASSIFIED", position: 1, time: "—", gap: "—" }],
+      }],
+    },
+  }));
+
+  expect(chart).not.toHaveBeenCalled();
+  expect(html).toContain("No classified positions are available for the selected drivers.");
 });

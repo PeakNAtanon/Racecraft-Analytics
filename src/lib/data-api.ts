@@ -355,10 +355,21 @@ function driverInfoMap(rows: JsonRecord[]) {
   for (const row of rows) {
     const number = finiteNumber(row.driver_number);
     if (number === undefined) continue;
+    const code = text(row.name_acronym);
+    if (code === "—") continue;
     const firstName = text(row.first_name);
     const lastName = text(row.last_name);
     const name = firstName !== "—" && lastName !== "—" ? `${firstName} ${lastName}` : text(row.full_name);
-    drivers.set(number, { code: text(row.name_acronym), name, team: text(row.team_name), color: typeof row.team_colour === "string" ? row.team_colour : undefined });
+    drivers.set(number, { code: code.toUpperCase(), name, team: text(row.team_name), color: typeof row.team_colour === "string" ? row.team_colour : undefined });
+  }
+  return drivers;
+}
+
+function driverInfoMapFromProfiles(profiles: DriverProfile[]) {
+  const drivers = new Map<number, DriverInfo>();
+  for (const profile of profiles) {
+    if (profile.driverNumber === undefined || profile.code === "—") continue;
+    drivers.set(profile.driverNumber, { code: profile.code.toUpperCase(), name: profile.name, team: profile.team, color: profile.color });
   }
   return drivers;
 }
@@ -688,7 +699,7 @@ export async function getSessionAnalytics(options: { sessionKey?: number; season
 }
 
 const seasonComparisonCache = new Map<string, { expiresAt: number; request: Promise<SeasonComparisonSnapshot> }>();
-const comparisonCacheVersion = "provider-adapter-v4";
+const comparisonCacheVersion = "provider-adapter-v5";
 
 async function loadSeasonComparison(season: number): Promise<SeasonComparisonSnapshot> {
   const openf1 = (process.env.OPENF1_BASE_URL ?? "https://api.openf1.org/v1").replace(/\/$/, "");
@@ -714,7 +725,11 @@ async function loadSeasonComparison(season: number): Promise<SeasonComparisonSna
 
   const latest = sessionRows.at(-1);
   const driverResponse = latest ? await fetchJson(`${openf1}/drivers?session_key=${latest.sessionKey}`) : { ok: false };
-  const drivers = driverInfoMap(records(driverResponse.data));
+  // Practice and Sprint Qualifying have no Jolpica result endpoint. Keep a
+  // stable driver-number identity from Jolpica standings as a fallback when
+  // the single OpenF1 drivers request is delayed or rate-limited.
+  const drivers = driverInfoMapFromProfiles(standingsSnapshot.profiles);
+  for (const [number, info] of driverInfoMap(records(driverResponse.data))) drivers.set(number, info);
   const sessions = await mapWithConcurrency(sessionRows, 12, async session => {
     // Keep the season index within the public OpenF1 request budget while
     // retaining a result status for every completed session. Jolpica remains

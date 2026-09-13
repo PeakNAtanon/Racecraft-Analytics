@@ -30,7 +30,7 @@ export function CompareLab({ drivers, pace, comparison, stints, telemetryByDrive
   const filteredSessions = filterComparisonSessions(comparison.sessions, filters);
   const filteredComparison: SeasonComparisonSnapshot = { ...comparison, sessions: filteredSessions };
   const visibleDriverRows = drivers.filter(driver => visibleDrivers.includes(driver.code));
-  const selectedSeries = vsDrivers.map(code => pace.series.find(series => series.code === code)).filter((series): series is NonNullable<typeof series> => Boolean(series));
+  const selectedSeries = vsDrivers.map(code => pace.series.find(series => series.code.toUpperCase() === code.toUpperCase())).filter((series): series is NonNullable<typeof series> => Boolean(series));
   const chartData: PaceChartData = { ...pace, series: selectedSeries, defaultCodes: selectedSeries.map(series => series.code) };
   const fastF1Status = pace.source === "FastF1" ? text(locale, "FASTF1 · VALIDATED ARTIFACT") : text(locale, "FASTF1 · PENDING");
   const vsProfiles = vsDrivers.map(code => drivers.find(driver => driver.code === code)).filter((driver): driver is Standing => Boolean(driver));

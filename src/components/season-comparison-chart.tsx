@@ -2,6 +2,7 @@
 
 import { formatChartNumber, formatPositionTooltipValue } from "@/lib/chart-format";
 import { LazyECharts } from "@/components/lazy-echarts";
+import { analysisText as text } from "@/lib/analysis-copy";
 import type { Locale } from "@/lib/i18n";
 import { message } from "@/lib/i18n";
 import { getTeamColor } from "@/lib/team-colors";
@@ -17,7 +18,7 @@ function labelForSession(circuit: string, code: string) {
 }
 
 function positionStats(sessions: SeasonComparisonSnapshot["sessions"], code: string) {
-  const positions = sessions.map(session => session.results.find(result => result.code === code && result.status === "CLASSIFIED")?.position).filter((position): position is number => typeof position === "number" && Number.isFinite(position));
+  const positions = sessions.map(session => session.results.find(result => result.code.toUpperCase() === code.toUpperCase() && result.status === "CLASSIFIED")?.position).filter((position): position is number => typeof position === "number" && Number.isFinite(position));
   return {
     best: positions.length ? Math.min(...positions) : null,
     average: positions.length ? positions.reduce((total, position) => total + position, 0) / positions.length : null,
@@ -31,7 +32,7 @@ function formatPosition(position: number | null) {
 
 export function SeasonComparisonChart({ comparison, activeDrivers, locale }: { comparison: SeasonComparisonSnapshot; activeDrivers: string[]; locale: Locale }) {
   const sessions = comparison.sessions.filter(session => session.results.length > 0);
-  const selected = activeDrivers.filter(code => comparison.drivers.some(driver => driver.code === code));
+  const selected = activeDrivers.filter(code => comparison.drivers.some(driver => driver.code.toUpperCase() === code.toUpperCase()));
 
   if (!sessions.length || !selected.length) {
     return <div className="empty">{message(locale, "comparisonNoData")}</div>;
@@ -39,12 +40,12 @@ export function SeasonComparisonChart({ comparison, activeDrivers, locale }: { c
 
   const labels = sessions.map(session => labelForSession(session.circuit, session.sessionCode));
   const colors = selected.map((code, index) => {
-    const driver = comparison.drivers.find(item => item.code === code);
+    const driver = comparison.drivers.find(item => item.code.toUpperCase() === code.toUpperCase());
     return getTeamColor(driver?.team, driver?.color) ?? fallbackColors[index % fallbackColors.length];
   });
   const maxPosition = Math.max(1, ...sessions.flatMap(session => session.results.flatMap(result => result.status !== "CLASSIFIED" || result.position === undefined ? [] : [result.position])));
   const findPosition = (sessionIndex: number, code: string) => {
-    const result = sessions[sessionIndex].results.find(item => item.code === code && item.status === "CLASSIFIED");
+    const result = sessions[sessionIndex].results.find(item => item.code.toUpperCase() === code.toUpperCase() && item.status === "CLASSIFIED");
     return result?.position ?? null;
   };
   const selectedStats = selected.map(code => positionStats(sessions, code));
@@ -55,6 +56,9 @@ export function SeasonComparisonChart({ comparison, activeDrivers, locale }: { c
     index,
     values: sessions.map((_, sessionIndex) => findPosition(sessionIndex, code)),
   }));
+  if (!seriesData.some(series => series.values.some(value => typeof value === "number" && Number.isFinite(value)))) {
+    return <div className="empty">{text(locale, "No classified positions are available for the selected drivers.")}</div>;
+  }
   const resultSeries = seriesData.map(({ code, index, values }) => ({
     name: code,
     type: "line",
@@ -161,7 +165,7 @@ export function SeasonComparisonChart({ comparison, activeDrivers, locale }: { c
             <td>{session.sessionCode}</td>
             <td>{session.circuit}</td>
             {selected.map(code => {
-              const result = session.results.find(item => item.code === code && item.status === "CLASSIFIED");
+              const result = session.results.find(item => item.code.toUpperCase() === code.toUpperCase() && item.status === "CLASSIFIED");
               return <td key={code}>{result?.position === undefined ? "—" : `P${result.position}`}</td>;
             })}
           </tr>)}</tbody>
