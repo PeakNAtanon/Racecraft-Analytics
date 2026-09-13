@@ -75,6 +75,7 @@ function applyRaceMetadata(round: Round, race: JsonRecord | undefined): Round {
   const location = record(circuit.Location);
   return {
     ...round,
+    round: Number(race.round) > 0 ? Number(race.round) : round.round,
     name: text(race.raceName) || round.name,
     raceStartsAt: raceStart(race, round.raceStartsAt),
     circuit: {
@@ -158,7 +159,7 @@ async function loadScheduleRounds(season: number): Promise<Round[]> {
 }
 
 export async function getScheduleRounds(season = Number(process.env.F1_SEASON ?? "2026")): Promise<Round[]> {
-  const cacheKey = String(season);
+  const cacheKey = `round-identity-v2:${season}`;
   const cached = scheduleCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   const active = scheduleInFlight.get(cacheKey);
@@ -180,8 +181,8 @@ export async function getScheduleRounds(season = Number(process.env.F1_SEASON ??
   return request;
 }
 
-export async function getScheduleRound(value: string): Promise<Round | undefined> {
-  const schedule = await getScheduleRounds();
+export async function getScheduleRound(value: string, season?: number): Promise<Round | undefined> {
+  const schedule = await getScheduleRounds(season);
   return schedule.find(round => round.round === Number(value) || round.slug === value);
 }
 

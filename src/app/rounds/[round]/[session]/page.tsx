@@ -11,9 +11,11 @@ import { getLocale } from "@/lib/i18n-server";
 import { getTimezone, getTimezoneMode } from "@/lib/timezone-server";
 import { displayTimezone } from "@/lib/timezone";
 
-export default async function SessionPage({ params }: { params: Promise<{ round: string; session: string }> }) {
+export default async function SessionPage({ params, searchParams }: { params: Promise<{ round: string; session: string }>; searchParams?: Promise<{ season?: string }> }) {
   const pageParams = await params;
-  const round = await getScheduleRound(pageParams.round);
+  const query = await searchParams;
+  const season = ["2023", "2024", "2025"].includes(query?.season ?? "") ? Number(query?.season) : 2026;
+  const round = await getScheduleRound(pageParams.round, season);
   const session = round?.sessions.find(item => item.code.toLowerCase() === pageParams.session.toLowerCase());
   if (!round || !session) notFound();
   const [analytics, locale, timezone, timezoneMode] = await Promise.all([session.status === "scheduled" ? Promise.resolve(null) : getSessionAnalytics({ sessionKey: session.sessionKey, season: round.season, round: round.round, sessionCode: session.code, sessionName: session.name, fastF1Only: true }), getLocale(), getTimezone(), getTimezoneMode()]);

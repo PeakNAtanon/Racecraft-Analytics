@@ -1,9 +1,71 @@
 import json
+import pytest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from racecraft_ingest import main as worker
+
+
+@pytest.mark.parametrize("provider_result", [RuntimeError("OpenF1 unavailable"), []])
+def test_backfill_uses_saved_sessions_when_provider_is_unavailable(monkeypatch, provider_result):
+    settings = replace(worker.Settings(), database_url="test", rss_feeds=())
+    calendar = {"MRData": {"RaceTable": {"Races": []}}}
+    saved = [{"session_name": "R", "date_start": "2020-03-08T12:00:00+00:00", "date_end": "2020-03-08T14:00:00+00:00"}]
+    provider = Mock()
+    provider.calendar = AsyncMock(return_value=calendar)
+    provider.sessions = AsyncMock(**({"side_effect": provider_result} if isinstance(provider_result, Exception) else {"return_value": provider_result}))
+    monkeypatch.setattr(worker, "JolpicaProvider", lambda *args: provider)
+    monkeypatch.setattr(worker, "OpenF1Provider", lambda *args: provider)
+    repository = Mock()
+    repository.upsert_calendar.return_value = 0
+    repository.upsert_sessions.return_value = 0
+    repository.get_completed_sessions.return_value = saved
+    monkeypatch.setattr(worker, "Repository", lambda *args: repository)
+    backfill = Mock(return_value={"state": "complete", "processed": 1, "pending": 10})
+    monkeypatch.setattr(worker, "_run_fastf1", backfill)
+    result = worker.asyncio.run(worker.run_once(settings))
+    assert backfill.call_args.args[2] == saved
+    assert result["openf1_ok"] is False
+    assert result["diagnostics"]["session_source"] == "database"
+    repository.get_completed_sessions.assert_called_once_with(settings.season)
+
+def test_worker_rotates_years_without_changing_once_default(monkeypatch):
+    settings = replace(worker.Settings(), season=2026, ingest_seasons=(2026, 2025, 2024, 2023))
+    monkeypatch.setattr(worker, "Settings", lambda: settings)
+    monkeypatch.setattr("sys.argv", ["racecraft-ingest"])
+    years = []
+    async def run_once(current):
+        years.append(current.season)
+        if len(years) == 5:
+            raise KeyboardInterrupt
+        return {"fastf1": {"processed": 1, "pending": 10}}
+    async def sleep(seconds):
+        pass
+    monkeypatch.setattr(worker, "run_once", run_once)
+    monkeypatch.setattr(worker.asyncio, "sleep", sleep)
+    with pytest.raises(KeyboardInterrupt):
+        worker.main()
+    assert years == [2026, 2025, 2024, 2023, 2026]
+    years.clear()
+    monkeypatch.setattr("sys.argv", ["racecraft-ingest", "--once"])
+    worker.main()
+    assert years == [2026]
+
+
+def test_backfill_continues_promptly_after_progress_or_a_failed_attempt():
+    assert worker._next_cycle_delay({"fastf1": {"pending": 67, "processed": 1}}) == 30
+    assert worker._next_cycle_delay({"fastf1": {"pending": 67, "error": "not published"}}) == 30
+
+
+def test_idle_disabled_and_cooling_queues_keep_normal_polling():
+    for fastf1 in [
+        {"pending": 0, "processed": 1},
+        {"pending": 0, "state": "disabled"},
+        {"pending": 2, "state": "telemetry_processing"},
+    ]:
+        assert worker._next_cycle_delay({"fastf1": fastf1}) == 600
 
 
 def test_worker_refreshes_v5_for_distance_support(tmp_path):

@@ -27,9 +27,17 @@ py -m venv .venv
 .venv\Scripts\racecraft-ingest --once
 ```
 
-ตั้ง `DATABASE_URL`, PostgreSQL และ provider variables ตาม `.env.example` โดย worker ต้องมี persistent volume ที่ `/data` สำหรับ FastF1 cache และเรียก worker ทุก 10 นาที เมื่อ OpenF1 ปิดระหว่าง session worker จะรายงาน `awaiting_data` และลองใหม่ในรอบถัดไปจนกว่าจะเผยแพร่ข้อมูลหลังจบ session
+ตั้ง `DATABASE_URL`, PostgreSQL และ provider variables ตาม `.env.example` โดย worker ต้องมี persistent volume ที่ `/data` สำหรับ FastF1 cache และรัน worker แบบต่อเนื่อง โดยจะพัก 30 วินาทีระหว่าง session ขณะที่ยังมีคิวย้อนหลังในปี `F1_SEASON` และกลับไปตรวจทุก 10 นาทีเมื่อไม่มีคิวหรือทุกรายการอยู่ระหว่างพัก retry เมื่อ OpenF1 ปิดระหว่าง session worker จะรายงาน `awaiting_data` และลองใหม่ในรอบถัดไปจนกว่าจะเผยแพร่ข้อมูลหลังจบ session
 
 หาก FastF1 ประมวลผล session ไม่สำเร็จ worker จะพักรายการนั้นอย่างน้อย 20 นาที และให้รายการที่ยังไม่เคยลองทำงานก่อน retry โดยยังลองโหลดไม่เกินหนึ่ง session ต่อรอบ สถานะ retry เก็บในหน่วยความจำและเริ่มใหม่เมื่อ worker restart; `fastf1_pending` นับ session ทั้งหมดที่ยังไม่มี artifact รุ่นปัจจุบัน
+
+Docker ตั้ง `INGEST_SEASONS=2026,2025,2024,2023` เพื่อสลับเติม session ที่จบแล้วของปี 2023–2026 ทีละรายการ โดยเก็บ artifact แยกตามปีและข้ามไฟล์รุ่นปัจจุบันที่มีอยู่ ตั้งค่านี้ใน `.env.docker` หากต้องการเปลี่ยนปีที่จะเติม; `F1_SEASON` ยังเป็นปีเริ่มต้นของเว็บและคำสั่ง `--once`
+
+หาก OpenF1 ดึงรายการ session ไม่สำเร็จหรือคืนรายการว่าง worker จะใช้ session ที่จบแล้วซึ่งเคยบันทึกใน PostgreSQL เติมคิวต่อ โดย log ระบุ `diagnostics.session_source=database` และยังแสดง `openf1_ok=false` ตามจริง ไม่มีการสร้าง session หรือเวลาจบสมมติ
+
+การเปิดประวัติทั้งฤดูกาลครั้งแรกอาจใช้เวลาประมาณ 2 นาทีขณะดึงข้อมูลตามขีดจำกัด provider; Nginx read timeout และ Traefik write timeout ตั้งไว้ 300 วินาทีเพื่อให้ส่งหน้าแบบ streaming ได้ครบ หากมี proxy ภายนอกเพิ่มเติม ต้องตรวจเวลารอของชั้นนั้นด้วย
+
+หน้า `/compare?season=2026&compareSeason=2025` เทียบผลและอันดับสองฤดูกาลได้ โดยแสดงจำนวน session ของแต่ละปีและจับคู่สนามตามชื่อเมื่อกรอง Round; ไม่จับคู่ตามเลข Round ข้ามปี กราฟ pace/telemetry ด้านล่างใช้ฤดูกาลหลักที่เลือก ลิงก์ไปหน้านักขับและ session พาระบุปีไปด้วย และข้อมูล FastF1 ที่ยังไม่มีไฟล์จะอยู่ในสถานะรอประมวลผล ตรวจความคืบหน้ารายปีได้จาก `season` และ `fastf1_pending` ใน `docker compose --env-file .env.docker logs worker`
 
 ## Self-hosted Docker on Debian
 

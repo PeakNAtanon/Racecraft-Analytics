@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterComparisonSessions, latestFastF1Session, selectDriverPair } from "./compare";
+import { filterComparisonSessions, latestFastF1Session, resolveComparisonFilters, selectDriverPair } from "./compare";
 import type { FastF1ArtifactInventoryItem } from "./fastf1-artifacts";
 import type { ComparisonSession } from "./types";
 
@@ -21,6 +21,25 @@ function artifact(overrides: Partial<FastF1ArtifactInventoryItem>): FastF1Artifa
 }
 
 describe("Compare FastF1 session selection", () => {
+  it("defaults to published qualifying when race results exist without race analysis", () => {
+    const sessions = [session({ results: [{ code: "VER" }] as ComparisonSession["results"] }), session({ round: 14, sessionCode: "Q", startsAt: "2026-09-12" })];
+    const artifacts = [artifact({ round: 14, sessionCode: "Q" })];
+    const filters = resolveComparisonFilters(sessions, artifacts, {});
+    expect(filters.session).toBe("Q");
+    expect(latestFastF1Session(filterComparisonSessions(sessions, filters), artifacts)?.round).toBe(14);
+    expect(resolveComparisonFilters(sessions, artifacts, { session: "R" }).session).toBe("R");
+    expect(resolveComparisonFilters(sessions, artifacts, { session: "ALL" }).session).toBe("ALL");
+    expect(resolveComparisonFilters(sessions, [], {}).session).toBe("R");
+  });
+
+  it("limits default artifact selection to the requested round and circuit", () => {
+    const sessions = [session({ sessionCode: "SPR" }), session({ round: 14, sessionCode: "Q", circuit: "Other", startsAt: "2026-09-12" })];
+    const artifacts = [artifact({ sessionCode: "S" }), artifact({ round: 14, sessionCode: "Q" })];
+    expect(resolveComparisonFilters(sessions, artifacts, { round: "1" }).session).toBe("SPR");
+    expect(resolveComparisonFilters(sessions, artifacts, { circuit: "Test Circuit" }).session).toBe("SPR");
+    expect(resolveComparisonFilters(sessions, artifacts, { round: "99" }).session).toBe("ALL");
+  });
+
   it("selects a matching artifact after applying round, circuit and session filters", () => {
     const sessions = [session({ round: 1, sessionCode: "Q", sessionKey: 10 }), session({ round: 2, sessionKey: 20, startsAt: "2026-04-01" })];
     const artifacts = [artifact({ round: 1, sessionCode: "Q" }), artifact({ round: 2 })];

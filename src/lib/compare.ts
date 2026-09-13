@@ -3,6 +3,15 @@ import type { ComparisonSession } from "./types";
 
 export interface ComparisonFilters { session: string; round: string; circuit: string }
 
+export function resolveComparisonFilters(sessions: ComparisonSession[], artifacts: FastF1ArtifactInventoryItem[], query: Partial<ComparisonFilters>): ComparisonFilters {
+  const filters = { session: query.session ?? "ALL", round: query.round ?? "ALL", circuit: query.circuit ?? "ALL" };
+  if (query.session !== undefined) return filters;
+  const candidates = filterComparisonSessions(sessions, filters);
+  filters.session = latestFastF1Session(candidates, artifacts)?.sessionCode
+    ?? (candidates.some(session => session.sessionCode === "R" && session.results.length) ? "R" : "ALL");
+  return filters;
+}
+
 export function filterComparisonSessions(sessions: ComparisonSession[], filters: ComparisonFilters) {
   return sessions.filter(session => (filters.session === "ALL" || session.sessionCode === filters.session)
     && (filters.round === "ALL" || String(session.round) === filters.round)

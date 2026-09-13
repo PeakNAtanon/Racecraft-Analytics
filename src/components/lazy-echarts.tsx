@@ -42,7 +42,7 @@ export function LazyECharts({ style, ...props }: LazyEChartsProps) {
 
   return <div ref={anchorRef} className="lazy-chart" style={placeholderStyle} aria-busy={!shouldLoad}>
     {shouldLoad
-      ? <ReactECharts {...props} style={style} />
+      ? <ReactECharts {...props} style={{ width: "100%", ...style }} />
       : <p className="chart-deferred-status" role="status">Chart will load when visible.</p>}
   </div>;
 }

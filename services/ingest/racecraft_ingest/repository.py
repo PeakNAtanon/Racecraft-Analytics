@@ -10,6 +10,18 @@ from .rss import NewsItem
 class Repository:
     def __init__(self, database_url: str): self.database_url = database_url
 
+    def get_completed_sessions(self, season: int) -> list[dict]:
+        """Reuse previously published OpenF1 sessions during a provider outage."""
+        with psycopg.connect(self.database_url) as conn, conn.cursor() as cur:
+            cur.execute("""select s.code, s.start_time, s.completed_at
+                from sessions s join rounds r on r.id=s.round_id
+                join seasons y on y.id=r.season_id
+                where y.year=%s and s.completed_at <= now()
+                    and s.start_time is not null
+                order by s.start_time desc""", (season,))
+            return [{"session_name": code, "date_start": start.isoformat(), "date_end": end.isoformat()}
+                    for code, start, end in cur.fetchall()]
+
     def upsert_calendar(self, season: int, payload: dict) -> int:
         races = payload.get("MRData", {}).get("RaceTable", {}).get("Races", [])
         with psycopg.connect(self.database_url) as conn, conn.cursor() as cur:

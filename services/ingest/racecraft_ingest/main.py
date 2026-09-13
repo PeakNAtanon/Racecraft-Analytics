@@ -1,6 +1,6 @@
 from __future__ import annotations
 import argparse, asyncio, json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic
@@ -13,6 +13,7 @@ from .repository import Repository
 
 _fastf1_retry_after: dict[str, float] = {}
 FASTF1_RETRY_DELAY_SECONDS = 1200
+FASTF1_BACKFILL_DELAY_SECONDS = 30
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -57,7 +58,7 @@ def _run_fastf1(settings: Settings, calendar: dict[str, Any] | None, sessions: l
     """Process one missing published session per worker cycle.
 
     Processing one artifact at a time keeps the cache and CPU bounded. The
-    next ten-minute cycle continues the backlog without duplicating files.
+    next cycle continues the backlog without duplicating files.
     Failed sessions rest for twenty minutes so the next cycle can attempt
     older work. Retry deadlines are local to this worker process.
     """
@@ -121,6 +122,11 @@ async def run_once(settings: Settings) -> dict:
     session_rows = sessions if isinstance(sessions,list) else []
     normalized_sessions = sum(1 for row in session_rows if row.get("session_key") is not None and canonical_session_code(row.get("session_name") or row.get("session_type")))
     openf1_ok = isinstance(sessions, list) and bool(session_rows)
+    session_source = "openf1"
+    if not session_rows and repository:
+        # A transient API failure must not erase the known backfill queue.
+        session_rows = await asyncio.to_thread(repository.get_completed_sessions, settings.season)
+        session_source = "database"
     fastf1 = await asyncio.to_thread(_run_fastf1, settings, calendar if isinstance(calendar, dict) else None, session_rows)
     if repository and fastf1.get("state") == "complete" and fastf1.get("artifact"):
         persisted["telemetry_artifacts"] = await asyncio.to_thread(repository.upsert_telemetry_artifact, settings.season, int(fastf1["round"]), str(fastf1["session_code"]), str(fastf1["artifact"]), {"provider": "FastF1", "drivers": fastf1.get("drivers", 0), "state": fastf1["state"]})
@@ -128,7 +134,14 @@ async def run_once(settings: Settings) -> dict:
     # expected and should be retried by the ten-minute worker loop, not treated
     # as a destructive provider outage.
     pipeline_state = "telemetry_processing" if fastf1["state"] == "telemetry_processing" else "provisional" if openf1_ok else "awaiting_data"
-    return {"season": settings.season, "calendar_ok": not isinstance(calendar, Exception), "openf1_ok": openf1_ok, "openf1_state": "published" if openf1_ok else "post_session_pending", "fastf1_state": fastf1["state"], "news_count": len(news), "diagnostics": {"calendar_records": len(calendar.get("MRData", {}).get("RaceTable", {}).get("Races", [])) if isinstance(calendar,dict) else 0, "openf1_records": len(session_rows), "openf1_normalized": normalized_sessions, "fastf1_pending": fastf1.get("pending", 0)}, "persisted":persisted,"state": pipeline_state, "fastf1": fastf1, "news": news[:5]}
+    return {"season": settings.season, "calendar_ok": not isinstance(calendar, Exception), "openf1_ok": openf1_ok, "openf1_state": "published" if openf1_ok else "post_session_pending", "fastf1_state": fastf1["state"], "news_count": len(news), "diagnostics": {"session_source": session_source, "calendar_records": len(calendar.get("MRData", {}).get("RaceTable", {}).get("Races", [])) if isinstance(calendar,dict) else 0, "openf1_records": len(session_rows), "openf1_normalized": normalized_sessions, "fastf1_pending": fastf1.get("pending", 0)}, "persisted":persisted,"state": pipeline_state, "fastf1": fastf1, "news": news[:5]}
+
+def _next_cycle_delay(result: dict[str, Any]) -> int:
+    fastf1 = result.get("fastf1", {})
+    if fastf1.get("pending", 0) > 0 and (fastf1.get("processed", 0) > 0 or fastf1.get("error")):
+        return FASTF1_BACKFILL_DELAY_SECONDS
+    return 600
+
 
 def main() -> None:
     parser=argparse.ArgumentParser(); parser.add_argument("--once", action="store_true"); args=parser.parse_args()
@@ -136,6 +149,12 @@ def main() -> None:
     if args.once: print(json.dumps(asyncio.run(run_once(settings)), default=str, ensure_ascii=False))
     else:
         while True:
-            print(json.dumps(asyncio.run(run_once(settings)), default=str, ensure_ascii=False)); asyncio.run(asyncio.sleep(600))
+            delays = []
+            for season in settings.ingest_seasons or (settings.season,):
+                result = asyncio.run(run_once(replace(settings, season=season)))
+                print(json.dumps(result, default=str, ensure_ascii=False), flush=True)
+                delays.append(_next_cycle_delay(result))
+                asyncio.run(asyncio.sleep(FASTF1_BACKFILL_DELAY_SECONDS))
+            asyncio.run(asyncio.sleep(max(0, min(delays) - FASTF1_BACKFILL_DELAY_SECONDS)))
 
 if __name__ == "__main__": main()

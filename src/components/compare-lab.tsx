@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { CrossSeasonComparison } from "@/components/cross-season-comparison";
 import { analysisText as text } from "@/lib/analysis-copy";
 import { ComparisonOverview } from "@/components/comparison-overview";
 import { PaceChart } from "@/components/pace-chart";
@@ -15,7 +17,7 @@ function initialVsSelection(drivers: Standing[], pace: PaceChartData, requestedC
   return selectDriverPair(drivers.map(driver => driver.code), pace.defaultCodes ?? [], requestedCodes);
 }
 
-export function CompareLab({ drivers, pace, comparison, stints, telemetryByDriver, locale, filters, initialDriverCodes = [] }: { drivers: Standing[]; pace: PaceChartData; comparison: SeasonComparisonSnapshot; stints: StintSnapshot[]; telemetryByDriver?: Record<string, DriverTelemetrySnapshot>; locale: Locale; filters: ComparisonFilters; initialDriverCodes?: string[] }) {
+export function CompareLab({ drivers, pace, comparison, referenceComparison, stints, telemetryByDriver, locale, filters, initialDriverCodes = [] }: { drivers: Standing[]; pace: PaceChartData; comparison: SeasonComparisonSnapshot; referenceComparison?: SeasonComparisonSnapshot; stints: StintSnapshot[]; telemetryByDriver?: Record<string, DriverTelemetrySnapshot>; locale: Locale; filters: ComparisonFilters; initialDriverCodes?: string[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [visibleDrivers, setVisibleDrivers] = useState(() => drivers.map(driver => driver.code));
@@ -23,7 +25,7 @@ export function CompareLab({ drivers, pace, comparison, stints, telemetryByDrive
   const [activeVsSlot, setActiveVsSlot] = useState<0 | 1>(0);
   const { session: sessionFilter, round: roundFilter, circuit: circuitFilter } = filters;
   const updateFilters = (next: Partial<ComparisonFilters>) => {
-    const query = new URLSearchParams({ ...filters, ...next, drivers: vsDrivers.join(",") });
+    const query = new URLSearchParams({ ...filters, ...next, drivers: vsDrivers.join(","), season: String(comparison.season), ...(referenceComparison ? { compareSeason: String(referenceComparison.season) } : {}) });
     startTransition(() => router.replace(`/compare?${query}`, { scroll: false }));
   };
   const hasSeasonResults = comparison.sessions.some(session => session.results.length > 0);
@@ -64,6 +66,13 @@ export function CompareLab({ drivers, pace, comparison, stints, telemetryByDrive
 
   return <div className="compare-lab">
     <section className="panel compare-control-panel">
+      <form className="season-compare-controls" method="get" aria-label={locale === "th" ? "เลือกฤดูกาล" : "Choose seasons"}>
+        <input type="hidden" name="drivers" value={vsDrivers.join(",")} />
+        {Object.entries(filters).map(([name, value]) => <input key={name} type="hidden" name={name} defaultValue={value} />)}
+        <label>{locale === "th" ? "ฤดูกาลหลัก" : "Primary season"}<select className="select" name="season" defaultValue={comparison.season} onChange={event => { for (const name of ["round", "circuit", "session"]) { const control = event.currentTarget.form?.elements.namedItem(name); if (control instanceof HTMLInputElement) control.value = "ALL"; } }}>{[2026, 2025, 2024, 2023].map(year => <option key={year} value={year}>{year}</option>)}</select></label>
+        <label>{locale === "th" ? "เทียบกับฤดูกาล" : "Compare with season"}<select className="select" name="compareSeason" defaultValue={referenceComparison?.season ?? ""}><option value="">{locale === "th" ? "ไม่เปรียบเทียบ" : "Single season"}</option>{[2026, 2025, 2024, 2023].map(year => <option key={year} value={year}>{year}</option>)}</select></label>
+        <button className="button" type="submit">{locale === "th" ? "แสดงข้อมูล" : "Show seasons"}</button>
+      </form>
       <details className="analysis-guide"><summary>{text(locale, "Guide")} · FastF1</summary><p>{text(locale, "Clean-lap pace excludes pit laps, deleted laps and laps that fail accuracy or track-status checks.")}</p><p>{text(locale, "Consistency measures lap-time variation; lower means more consistent. Theoretical best sums the best validated sectors, not an actual completed lap.")}</p></details>
       <div className="compare-filter-bar">
         <label>{text(locale, "SESSION TYPE")}<select className="select" disabled={isPending} value={sessionFilter} onChange={event => updateFilters({ session: event.target.value })}><option value="ALL">{text(locale, "ALL SESSION TYPES")}</option><option value="R">{text(locale, "RACE")}</option><option value="Q">{text(locale, "QUALIFYING")}</option><option value="SPR">{text(locale, "SPRINT")}</option><option value="SQ">{text(locale, "SPRINT QUALIFYING")}</option><option value="FP1">{text(locale, "PRACTICE 1")}</option><option value="FP2">{text(locale, "PRACTICE 2")}</option><option value="FP3">{text(locale, "PRACTICE 3")}</option></select></label>
@@ -102,7 +111,9 @@ export function CompareLab({ drivers, pace, comparison, stints, telemetryByDrive
       </details>
     </section>
 
+    <div className="panel analysis-state-actions">{vsDrivers.map(code => <Link className="button-secondary" key={code} href={`/drivers/${code.toLowerCase()}?${new URLSearchParams({ season: String(comparison.season), round: roundFilter, circuit: circuitFilter, sessionCode: sessionFilter })}`}>{code} · {comparison.season} · {locale === "th" ? "กราฟนักขับ" : "Driver analysis"}</Link>)}</div>
     {isPending ? <p role="status">{text(locale, "Loading analysis for the selected filters…")}</p> : <>
+    {referenceComparison && <CrossSeasonComparison primary={filteredComparison} reference={referenceComparison} filters={filters} activeDrivers={vsDrivers} locale={locale} />}
     <ComparisonOverview drivers={visibleDriverRows} sessions={filteredSessions} pace={pace} stints={stints} telemetryByDriver={telemetryByDriver} activeDrivers={vsDrivers} locale={locale} />
 
     <section className="panel compare-summary-panel">

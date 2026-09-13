@@ -120,6 +120,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       FASTF1_CACHE: /data/fastf1-cache
+      INGEST_SEASONS: "${INGEST_SEASONS:-2026,2025,2024,2023}"
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
@@ -186,7 +187,7 @@ services:
       - --ping.entrypoint=web
       - --entrypoints.web.address=:80
       - --entrypoints.web.transport.respondingTimeouts.readTimeout=90s
-      - --entrypoints.web.transport.respondingTimeouts.writeTimeout=30s
+      - --entrypoints.web.transport.respondingTimeouts.writeTimeout=300s
       - --entrypoints.web.transport.respondingTimeouts.idleTimeout=20s
       - --providers.docker=false
       - --providers.file.filename=/etc/traefik/dynamic.yml
