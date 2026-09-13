@@ -1,7 +1,7 @@
 "use client";
 
-import ReactECharts from "echarts-for-react";
 import { analysisText as text } from "@/lib/analysis-copy";
+import { LazyECharts } from "@/components/lazy-echarts";
 import { TelemetryCharts } from "@/components/telemetry-charts";
 import { AnalysisDataState } from "@/components/analysis-data-state";
 import type { Locale } from "@/lib/i18n";
@@ -75,7 +75,7 @@ function DriverFieldChart({ rows, locale }: { rows: SummaryRow[]; locale: Locale
     yAxis: { type: "category", inverse: true, data: sorted.map(row => row.code), axisLabel: { color: theme.text, fontSize: 11, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace" }, axisLine: { show: false }, axisTick: { show: false } },
     series: [{ name: message(locale, "comparisonPoints"), type: "bar", barMaxWidth: 18, data: sorted.map(row => ({ value: row.points ?? null, itemStyle: { color: getTeamColor(row.team, row.color), borderRadius: [0, 4, 4, 0] } })) }],
   };
-  return <div className="chart-wrap overview-bar-chart" role="group" aria-label="Driver championship points ranking"><ReactECharts notMerge style={{ height: "100%", minHeight: 420 }} option={option} opts={{ renderer: "svg" }} /></div>;
+  return <div className="chart-wrap overview-bar-chart" role="group" aria-label="Driver championship points ranking"><LazyECharts notMerge style={{ height: "100%", minHeight: 420 }} option={option} opts={{ renderer: "svg" }} /></div>;
 }
 
 function PositionHeatmap({ rows, sessions, locale }: { rows: SummaryRow[]; sessions: ComparisonSession[]; locale: Locale }) {
@@ -97,7 +97,7 @@ function PositionHeatmap({ rows, sessions, locale }: { rows: SummaryRow[]; sessi
     visualMap: { min: 1, max: maxPosition, calculable: false, orient: "horizontal", left: "center", bottom: 8, text: [text(locale, "BACK"), "P1"], textStyle: { color: theme.muted, fontSize: 10, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace" }, inRange: { color: [theme.green, theme.cyan, theme.amber, theme.red] } },
     series: [{ name: message(locale, "comparisonPosition"), type: "heatmap", data, label: { show: rows.length <= 12, color: theme.background, fontSize: 9, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace", formatter: (params: unknown) => { if (!params || typeof params !== "object" || !("data" in params)) return ""; const value = (params as { data?: unknown }).data; return Array.isArray(value) ? `P${value[2]}` : ""; } }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "#000" } } }],
   };
-  return <div className="chart-wrap comparison-heatmap" role="group" aria-label="Driver position heatmap by session"><ReactECharts notMerge style={{ height: "100%", minHeight: 440 }} option={option} opts={{ renderer: "svg" }} /></div>;
+  return <div className="chart-wrap comparison-heatmap" role="group" aria-label="Driver position heatmap by session"><LazyECharts notMerge style={{ height: "100%", minHeight: 440 }} option={option} opts={{ renderer: "svg" }} /></div>;
 }
 
 function PaceConsistencyChart({ rows, locale }: { rows: SummaryRow[]; locale: Locale }) {
@@ -113,7 +113,7 @@ function PaceConsistencyChart({ rows, locale }: { rows: SummaryRow[]; locale: Lo
     yAxis: { type: "value", name: text(locale, "CONSISTENCY · STD DEV"), nameTextStyle: { color: theme.muted, fontSize: 9, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace" }, axisLabel: { color: theme.muted, fontSize: 10, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace", formatter: (value: unknown) => chartTooltipValue(value) }, axisLine: { show: false }, splitLine: { lineStyle: { color: "#ffffff14", type: "dashed" } } },
     series: [{ name: text(locale, "Drivers"), type: "scatter", data: points, symbolSize: (value: unknown) => Array.isArray(value) && typeof value[2] === "number" ? Math.max(10, Math.min(28, 8 + Math.sqrt(value[2]) * 1.8)) : 12, itemStyle: { opacity: 0.88, borderColor: theme.background, borderWidth: 2 }, encode: { x: 0, y: 1 }, emphasis: { focus: "series", itemStyle: { borderColor: theme.text, borderWidth: 2 } } }],
   };
-  return <div className="chart-wrap pace-consistency-chart" role="group" aria-label="Driver pace versus consistency scatter plot"><ReactECharts notMerge style={{ height: "100%", minHeight: 340 }} option={option} opts={{ renderer: "svg" }} /></div>;
+  return <div className="chart-wrap pace-consistency-chart" role="group" aria-label="Driver pace versus consistency scatter plot"><LazyECharts notMerge style={{ height: "100%", minHeight: 340 }} option={option} opts={{ renderer: "svg" }} /></div>;
 }
 
 function StrategyTimeline({ stints, activeDrivers, locale }: { stints: StintSnapshot[]; activeDrivers: string[]; locale: Locale }) {
@@ -127,7 +127,7 @@ function TyrePerformanceChart({ stints, activeDrivers, locale }: { stints: Stint
   const points = stints.filter(stint => activeDrivers.includes(stint.code) && stint.medianLap !== undefined);
   if (!points.length) return <div className="empty">{text(locale, "Stint pace samples are not available yet.")}</div>;
   const option = { backgroundColor: "transparent", animation: false, aria: { enabled: true }, grid: { left: 54, right: 24, top: 20, bottom: 64, containLabel: true }, tooltip: { trigger: "axis", confine: true, padding: [10, 12], backgroundColor: `${theme.surface}f7`, borderColor: `${theme.cyan}66`, borderWidth: 1, extraCssText: "box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38); border-radius: 8px;", textStyle: { color: theme.text, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace", fontSize: 11 }, axisPointer: { type: "cross", lineStyle: { color: "#ffffff55", width: 1 }, crossStyle: { color: "#ffffff55" }, label: { backgroundColor: theme.cyan, color: theme.background, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace" } }, valueFormatter: (value: unknown) => chartTooltipValue(value, " s") }, xAxis: { type: "category", data: points.map(point => `${point.code} S${point.stint}`), axisLabel: { color: theme.muted, fontSize: 9, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace", rotate: 35, hideOverlap: true }, axisLine: { lineStyle: { color: theme.line } }, axisTick: { show: false } }, yAxis: { type: "value", name: text(locale, "STINT MEDIAN · SEC"), nameTextStyle: { color: theme.muted, fontSize: 9, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace" }, axisLabel: { color: theme.muted, fontSize: 10, fontFamily: locale === "th" ? "Noto Sans Thai, sans-serif" : "JetBrains Mono, monospace" }, axisLine: { show: false }, splitLine: { lineStyle: { color: "#ffffff14", type: "dashed" } } }, series: [{ name: text(locale, "Stint pace"), type: "line", data: points.map(point => ({ value: point.medianLap, itemStyle: { color: compoundColor(point.compound) } })), showSymbol: true, symbolSize: 8, connectNulls: false, lineStyle: { color: theme.cyan, width: 2 }, itemStyle: { borderColor: theme.background, borderWidth: 2 } }] };
-  return <div className="chart-wrap tyre-performance-chart" role="group" aria-label="Tyre stint median pace chart"><ReactECharts notMerge style={{ height: "100%", minHeight: 300 }} option={option} opts={{ renderer: "svg" }} /></div>;
+  return <div className="chart-wrap tyre-performance-chart" role="group" aria-label="Tyre stint median pace chart"><LazyECharts notMerge style={{ height: "100%", minHeight: 300 }} option={option} opts={{ renderer: "svg" }} /></div>;
 }
 
 function TelemetryComparisonChart({ drivers, activeDrivers, telemetryByDriver, locale }: { drivers: Standing[]; activeDrivers: string[]; telemetryByDriver?: Record<string, DriverTelemetrySnapshot>; locale: Locale }) {

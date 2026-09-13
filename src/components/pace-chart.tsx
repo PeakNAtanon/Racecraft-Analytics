@@ -1,8 +1,8 @@
 "use client";
 
-import ReactECharts from "echarts-for-react";
 import { formatChartNumber, formatLapTooltipValue } from "@/lib/chart-format";
 import { buildValueGapBridges } from "@/lib/position-series";
+import { LazyECharts } from "@/components/lazy-echarts";
 import type { PaceChartData, PaceSeries } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { analysisText as text } from "@/lib/analysis-copy";
@@ -172,7 +172,7 @@ export function PaceChart({ data, locale = "en" }: { data: PaceChartData; locale
         <div className="chart-stat"><span>{text(locale, "VALID SAMPLES")}</span><strong>{allValues.length}</strong><small>{seriesData.length} {text(locale, "drivers selected")}</small></div>
       </div>
       <div className="chart-wrap" role="group" aria-label={`Lap pace comparison for ${seriesData.map(series => series.name).join(" and ")}`}>
-        <ReactECharts notMerge style={{ height: "100%", minHeight: 280 }} option={option} opts={{ renderer: "svg" }} />
+        <LazyECharts notMerge style={{ height: "100%", minHeight: 280 }} option={option} opts={{ renderer: "svg" }} />
       </div>
       <details className="chart-table-details">
         <summary className="chart-table-toggle">{text(locale, "OPEN DATA TABLE")}</summary>

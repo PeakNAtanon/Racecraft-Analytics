@@ -22,6 +22,9 @@ type Artifact = {
   weather?: ArtifactWeather;
 };
 
+const artifactCache = new Map<string, { mtimeMs: number; size: number; artifact: Artifact }>();
+const artifactInFlight = new Map<string, Promise<Artifact | null>>();
+
 // v5 remains readable on the time axis while the worker refreshes to v6.
 const artifactSchemaVersions = new Set(["fastf1-session-v5", "fastf1-session-v6"]);
 const artifactCode = (code: string) => code.toUpperCase() === "SPR" ? "S" : code.toUpperCase();
@@ -107,15 +110,26 @@ async function readArtifact(season: number, round: number | undefined, sessionCo
   if (!root || round === undefined || !sessionCode) return null;
   const providerSessionCode = sessionCode.toUpperCase() === "SPR" ? "S" : sessionCode.toUpperCase();
   const filename = path.join(root, String(season), String(round), providerSessionCode, "session.json");
-  try {
-    const parsed: unknown = JSON.parse(await readFile(filename, "utf8"));
-    if (!parsed || typeof parsed !== "object") return null;
-    const artifact = parsed as Artifact;
-    if (!matchesArtifact(artifact, season, round, sessionCode)) return null;
-    return { ...artifact, updatedAt: (await stat(filename)).mtime.toISOString() };
-  } catch {
-    return null;
-  }
+  const active = artifactInFlight.get(filename);
+  if (active) return active;
+  const request = (async () => {
+    try {
+      const fileInfo = await stat(filename);
+      const cached = artifactCache.get(filename);
+      if (cached && cached.mtimeMs === fileInfo.mtimeMs && cached.size === fileInfo.size) return cached.artifact;
+      const parsed: unknown = JSON.parse(await readFile(filename, "utf8"));
+      if (!parsed || typeof parsed !== "object") return null;
+      const artifact = parsed as Artifact;
+      if (!matchesArtifact(artifact, season, round, sessionCode)) return null;
+      const snapshot = { ...artifact, updatedAt: fileInfo.mtime.toISOString() };
+      artifactCache.set(filename, { mtimeMs: fileInfo.mtimeMs, size: fileInfo.size, artifact: snapshot });
+      return snapshot;
+    } catch {
+      return null;
+    }
+  })();
+  artifactInFlight.set(filename, request);
+  try { return await request; } finally { if (artifactInFlight.get(filename) === request) artifactInFlight.delete(filename); }
 }
 
 function number(value: unknown) {

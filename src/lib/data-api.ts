@@ -94,37 +94,39 @@ async function fetchJson(url: string): Promise<FetchResult> {
   const active = providerInFlight.get(url);
   if (active) return active;
   const redisKey = redisCacheKey("provider", url);
-  const distributed = await redisCacheGet<FetchResult>(redisKey);
-  if (distributed) {
-    providerCache.set(url, { expiresAt: Date.now() + 600_000, result: distributed });
-    return distributed;
-  }
-
-  const request = queueProviderRequest(url, async () => {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const response = await fetch(url, {
-          headers: { "User-Agent": process.env.PROVIDER_USER_AGENT ?? "RacecraftAnalytics/0.1" },
-          next: { revalidate: 600 },
-          signal: AbortSignal.timeout(8000),
-        });
-        if (response.ok) {
-          const result = { ok: true, data: await response.json() };
-          providerCache.set(url, { expiresAt: Date.now() + 600000, result });
-          void redisCacheSet(redisKey, result, 600);
-          return result;
-        }
-        const retryable = response.status === 429 || response.status >= 500;
-        if (!retryable || attempt === 2) return { ok: false };
-        const retryAfter = Number(response.headers.get("retry-after"));
-        await wait(Number.isFinite(retryAfter) ? Math.min(10000, Math.max(350, retryAfter * 1000)) : 500 * 2 ** attempt);
-      } catch {
-        if (attempt === 2) return { ok: false };
-        await wait(500 * 2 ** attempt);
-      }
+  const request = (async () => {
+    const distributed = await redisCacheGet<FetchResult>(redisKey);
+    if (distributed) {
+      providerCache.set(url, { expiresAt: Date.now() + 600_000, result: distributed });
+      return distributed;
     }
-    return { ok: false };
-  });
+
+    return queueProviderRequest(url, async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await fetch(url, {
+            headers: { "User-Agent": process.env.PROVIDER_USER_AGENT ?? "RacecraftAnalytics/0.1" },
+            next: { revalidate: 600 },
+            signal: AbortSignal.timeout(8000),
+          });
+          if (response.ok) {
+            const result = { ok: true, data: await response.json() };
+            providerCache.set(url, { expiresAt: Date.now() + 600000, result });
+            void redisCacheSet(redisKey, result, 600);
+            return result;
+          }
+          const retryable = response.status === 429 || response.status >= 500;
+          if (!retryable || attempt === 2) return { ok: false };
+          const retryAfter = Number(response.headers.get("retry-after"));
+          await wait(Number.isFinite(retryAfter) ? Math.min(10000, Math.max(350, retryAfter * 1000)) : 500 * 2 ** attempt);
+        } catch {
+          if (attempt === 2) return { ok: false };
+          await wait(500 * 2 ** attempt);
+        }
+      }
+      return { ok: false };
+    });
+  })();
   providerInFlight.set(url, request);
   try { return await request; } finally { if (providerInFlight.get(url) === request) providerInFlight.delete(url); }
 }
@@ -305,6 +307,21 @@ export async function getCircuitHistorySummariesBySlug(slugs: string[]): Promise
 
 
 function weatherBoolean(value: unknown): boolean | undefined { const normalized = String(value).toLowerCase(); if (value === true || normalized === "true" || normalized === "1") return true; if (value === false || normalized === "false" || normalized === "0") return false; return undefined }
+
+function openF1WeatherSnapshot(data: unknown, sessionName: string): WeatherSnapshot | undefined {
+  const latest = records(data).sort((a, b) => Date.parse(text(a.date)) - Date.parse(text(b.date))).at(-1);
+  return latest && Object.keys(latest).length ? {
+    source: "OpenF1",
+    sessionName,
+    sampledAt: typeof latest.date === "string" ? latest.date : undefined,
+    airTemperature: finiteNumber(latest.air_temperature),
+    trackTemperature: finiteNumber(latest.track_temperature),
+    humidity: finiteNumber(latest.humidity),
+    windSpeed: finiteNumber(latest.wind_speed),
+    windDirection: finiteNumber(latest.wind_direction),
+    rainfall: weatherBoolean(latest.rainfall),
+  } : undefined;
+}
 
 function median(values: number[]) {
   if (!values.length) return undefined;
@@ -521,6 +538,47 @@ export async function getSessionAnalytics(options: { sessionKey?: number; season
 
   const fastF1Artifact = resolvedRound === undefined ? null : await getFastF1SessionArtifact({ season, round: resolvedRound, sessionCode: selectedSessionCode, sessionKey });
   if (!sessionKey && fastF1Artifact) return fastF1Artifact;
+  if (fastF1Artifact) {
+    const artifactSessionKey = sessionKey;
+    const artifactSessionCode = selectedSessionCode;
+    if (artifactSessionKey === undefined || !artifactSessionCode) return fastF1Artifact;
+    const jolpica = (process.env.JOLPICA_BASE_URL ?? "https://api.jolpi.ca/ergast/f1").replace(/\/$/, "");
+    const endpoint = resolvedRound === undefined ? undefined : jolpicaSessionEndpoint(artifactSessionCode);
+    const [jolpicaResponse, weatherResponse] = await Promise.all([
+      endpoint && resolvedRound !== undefined
+        ? fetchJson(`${jolpica}/${season}/${resolvedRound}/${endpoint}.json`)
+        : Promise.resolve({ ok: false, data: undefined } satisfies FetchResult),
+      fastF1Artifact.weather
+        ? Promise.resolve({ ok: false, data: undefined } satisfies FetchResult)
+        : fetchJson(`${openf1}/weather?session_key=${encodeURIComponent(artifactSessionKey)}`),
+    ]);
+    const jolpicaResults = endpoint ? parseJolpicaResultsForCode(jolpicaResponse.data, artifactSessionCode) : [];
+    const openF1Weather = openF1WeatherSnapshot(weatherResponse.data, sessionName);
+    if (jolpicaResults.length) {
+      return {
+        ...fastF1Artifact,
+        sessionKey: artifactSessionKey,
+        sessionName: fastF1Artifact.sessionName || sessionName,
+        results: jolpicaResults,
+        resultsSource: "Jolpica",
+        ...(fastF1Artifact.weather ? {} : openF1Weather ? { weather: openF1Weather } : {}),
+      };
+    }
+
+    const [drivers, sessionResult] = await Promise.all([
+      fetchJson(`${openf1}/drivers?session_key=${encodeURIComponent(artifactSessionKey)}`),
+      fetchJson(`${openf1}/session_result?session_key=${encodeURIComponent(artifactSessionKey)}`),
+    ]);
+    const results = parseOpenF1Results(sessionResult.data, driverInfoMap(records(drivers.data)));
+    return {
+      ...fastF1Artifact,
+      sessionKey: artifactSessionKey,
+      sessionName: fastF1Artifact.sessionName || sessionName,
+      results,
+      resultsSource: results.length ? "OpenF1" : "fallback",
+      ...(fastF1Artifact.weather ? {} : openF1Weather ? { weather: openF1Weather } : {}),
+    };
+  }
   if (!sessionKey) return fallbackSessionAnalytics(undefined, sessionName);
 
   const [drivers, weather, sessionResult] = await Promise.all([
@@ -542,9 +600,7 @@ export async function getSessionAnalytics(options: { sessionKey?: number; season
     resultsSource = results.length ? "Jolpica" : "fallback";
   }
 
-  const latestOpenF1Weather = records(weather.data).sort((a, b) => Date.parse(text(a.date)) - Date.parse(text(b.date))).at(-1);
-  const openF1Weather: WeatherSnapshot | undefined = latestOpenF1Weather && Object.keys(latestOpenF1Weather).length ? { source: "OpenF1", sessionName, sampledAt: typeof latestOpenF1Weather.date === "string" ? latestOpenF1Weather.date : undefined, airTemperature: finiteNumber(latestOpenF1Weather.air_temperature), trackTemperature: finiteNumber(latestOpenF1Weather.track_temperature), humidity: finiteNumber(latestOpenF1Weather.humidity), windSpeed: finiteNumber(latestOpenF1Weather.wind_speed), windDirection: finiteNumber(latestOpenF1Weather.wind_direction), rainfall: weatherBoolean(latestOpenF1Weather.rainfall) } : undefined;
-  if (fastF1Artifact) return { ...fastF1Artifact, sessionKey, sessionName: fastF1Artifact.sessionName || sessionName, results, resultsSource, ...(fastF1Artifact.weather ? {} : openF1Weather ? { weather: openF1Weather } : {}) };
+  const openF1Weather = openF1WeatherSnapshot(weather.data, sessionName);
   if (fastF1Only) return fallbackSessionAnalytics(sessionKey, sessionName, results, resultsSource, openF1Weather);
 
   const [laps, pits] = await Promise.all([
@@ -715,7 +771,14 @@ export async function getSeasonComparison(season = Number(process.env.F1_SEASON 
   const cached = seasonComparisonCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.request;
   if (cached) seasonComparisonCache.delete(cacheKey);
-  const request = loadSeasonComparison(season).catch((error) => {
+  const redisKey = redisCacheKey("season-comparison", cacheKey);
+  const request = (async () => {
+    const distributed = await redisCacheGet<SeasonComparisonSnapshot>(redisKey);
+    if (distributed) return distributed;
+    const snapshot = await loadSeasonComparison(season);
+    void redisCacheSet(redisKey, snapshot, 600);
+    return snapshot;
+  })().catch((error) => {
     seasonComparisonCache.delete(cacheKey);
     throw error;
   });

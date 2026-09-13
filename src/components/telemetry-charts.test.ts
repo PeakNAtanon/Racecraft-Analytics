@@ -5,7 +5,7 @@ import type { DriverTelemetryPoint } from "@/lib/types";
 
 type ChartProps = { option: { xAxis: Array<{ name: string }>; series: Array<{ data: number[][] }>; dataZoom: Array<{ xAxisIndex: number[] }> } };
 const chart = vi.hoisted(() => vi.fn<(props: ChartProps) => null>(() => null));
-vi.mock("echarts-for-react", () => ({ default: chart }));
+vi.mock("@/components/lazy-echarts", () => ({ LazyECharts: (props: ChartProps) => { chart(props); return null; } }));
 import { TelemetryCharts } from "./telemetry-charts";
 import { ComparisonOverview } from "./comparison-overview";
 

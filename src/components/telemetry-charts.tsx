@@ -1,9 +1,9 @@
 "use client";
 
-import ReactECharts from "echarts-for-react";
 import { useId, useState } from "react";
 import { analysisText as text } from "@/lib/analysis-copy";
 import { distanceTelemetry, elapsedTelemetry } from "@/lib/telemetry-chart";
+import { LazyECharts } from "@/components/lazy-echarts";
 import type { Locale } from "@/lib/i18n";
 import type { DriverTelemetrySnapshot } from "@/lib/types";
 
@@ -42,7 +42,7 @@ export function TelemetryCharts({ traces, locale }: { traces: Array<{ code: stri
     {!distanceReady && <p id={hintId} role="status">{text(locale, "Distance is unavailable or incomplete for one or more selected drivers. Use time; older artifacts need a worker refresh.")}</p>}
     <p>{text(locale, axis === "distance" ? "Drag to zoom all traces together. Distance uses FastF1's computed lap-distance channel, not exact GPS position. No distance is calculated in the browser." : "Drag to zoom all traces together. Times start at the first recorded sample of each lap.")}</p>
     {coordinates.length ? <>
-      <ReactECharts key={axis} notMerge option={option} style={{ height: 550, width: "100%" }} opts={{ renderer: "svg" }} />
+      <LazyECharts key={axis} notMerge option={option} style={{ height: 550, width: "100%" }} opts={{ renderer: "svg" }} />
       <details className="chart-table-details" onToggle={event => setTableOpen(event.currentTarget.open)}><summary className="chart-table-toggle">{text(locale, "OPEN DATA TABLE")}</summary>{tableOpen && <div className="table-scroll" tabIndex={0} role="region" aria-label={text(locale, "Telemetry trace")}><table className="data-table"><thead><tr><th>{axisLabel}</th><th>{text(locale, "Source")}</th>{labels.map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{plotted.flatMap(trace => trace.samples.map((sample, index) => <tr key={`${trace.code}-${index}`}><td>{sample.x.toFixed(3)}</td><td>{trace.code}</td>{fields.map(field => <td key={field}>{sample[field] ?? "—"}</td>)}</tr>))}</tbody></table></div>}</details>
     </> : <p className="empty">{text(locale, "Telemetry needs valid timestamps to align the traces. No sample-index approximation is shown.")}</p>}
   </div>;

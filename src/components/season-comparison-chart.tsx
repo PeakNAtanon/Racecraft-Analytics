@@ -1,7 +1,7 @@
 "use client";
 
-import ReactECharts from "echarts-for-react";
 import { formatChartNumber, formatPositionTooltipValue } from "@/lib/chart-format";
+import { LazyECharts } from "@/components/lazy-echarts";
 import type { Locale } from "@/lib/i18n";
 import { message } from "@/lib/i18n";
 import { getTeamColor } from "@/lib/team-colors";
@@ -150,7 +150,7 @@ export function SeasonComparisonChart({ comparison, activeDrivers, locale }: { c
       <div className="chart-stat"><span>SESSIONS INDEXED</span><strong>{sessions.length}</strong><small>{new Set(sessions.map(session => session.round || session.circuit)).size} circuits</small></div>
     </div>
     <div className="chart-wrap season-summary-chart" role="group" aria-label={`${message(locale, "comparisonAllSessions")}: ${selected.join(", ")}`}>
-      <ReactECharts notMerge style={{ height: "100%", minHeight: 280 }} option={option} opts={{ renderer: "svg" }} />
+      <LazyECharts notMerge style={{ height: "100%", minHeight: 280 }} option={option} opts={{ renderer: "svg" }} />
     </div>
     <details className="chart-table-details">
       <summary className="chart-table-toggle">{message(locale, "comparisonOpenTable")}</summary>
