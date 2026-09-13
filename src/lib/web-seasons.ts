@@ -1,4 +1,6 @@
-const DEFAULT_WEB_SEASONS = [2026, 2025, 2024, 2023];
+// Keep the temporary web view focused on the active season even when the
+// deployment has not yet provided an explicit WEB_SEASONS setting.
+const DEFAULT_WEB_SEASONS = [2026];
 
 function parseSeasons(value: string | undefined) {
   if (value === undefined) return DEFAULT_WEB_SEASONS;
