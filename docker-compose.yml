@@ -120,7 +120,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       FASTF1_CACHE: /data/fastf1-cache
-      INGEST_SEASONS: "${INGEST_SEASONS:-2026,2025,2024,2023}"
+      INGEST_SEASONS: "${INGEST_SEASONS:-2026}"
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
